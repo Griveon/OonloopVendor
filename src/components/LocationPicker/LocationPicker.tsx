@@ -1,34 +1,32 @@
-// components/GoogleAddressPicker/GoogleAddressPicker.tsx
-
-import React, { useRef, useState, useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-    View,
-    Text,
-    TouchableOpacity,
-    Modal,
-    StyleSheet,
     ActivityIndicator,
-    Platform,
-    TextInput,
-    ScrollView,
-    KeyboardAvoidingView,
+    Alert,
+    Animated,
     Dimensions,
+    FlatList,
+    Keyboard,
+    KeyboardAvoidingView,
+    Linking,
+    Modal,
+    PermissionsAndroid,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    View,
 } from "react-native";
-import MapView, { Region } from "react-native-maps";
-import { GooglePlacesAutocomplete } from "react-native-google-places-autocomplete";
 import Geolocation from "@react-native-community/geolocation";
-import { PermissionsAndroid } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import { colors } from "../../constants/AppThem";
-import { googleGetRequest } from "../../constants/ApiClient";
-import { API_ENDPOINTS } from "../../constants/ApiEndpoints";
+import { placesService, Prediction } from "./PlacesService";
 
-const GOOGLE_API_KEY = "AIzaSyD06rgmMtvcUfRMvFNvXlnn0rwpGUUzzAc";
-const { height: SCREEN_H } = Dimensions.get("window");
+const GOOGLE_MAPS_API_KEY = "AIzaSyD06rgmMtvcUfRMvFNvXlnn0rwpGUUzzAc";
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+const SHEET_HEIGHT = SCREEN_HEIGHT * 0.82;
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export type AddressResult = {
+export interface AddressResult {
     addressLine1: string;
     addressLine2: string;
     landmark: string;
@@ -38,515 +36,658 @@ export type AddressResult = {
     postalCode: string;
     latitude: number;
     longitude: number;
-};
+}
 
-type Props = {
+interface Props {
     value: AddressResult;
     onChange: (addr: AddressResult) => void;
-};
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-export function emptyAddress(lat = 0, lng = 0): AddressResult {
-    return {
-        addressLine1: "", addressLine2: "", landmark: "",
-        city: "", state: "", country: "India", postalCode: "",
-        latitude: lat, longitude: lng,
-    };
 }
 
-function getComp(components: any[], type: string): string {
-    return components?.find((c: any) => c.types.includes(type))?.long_name ?? "";
-}
+type LocationStatus = "idle" | "locating" | "success" | "error";
 
-function parseGeocodeResult(json: any, fallbackLat: number, fallbackLng: number): AddressResult {
-    const result = json.results?.[0];
-    if (!result) return emptyAddress(fallbackLat, fallbackLng);
+// ─── Permission helper ────────────────────────────────────────────────────────
 
-    const comps = result.address_components ?? [];
-    const streetNumber = getComp(comps, "street_number");
-    const route = getComp(comps, "route");
-    const premise = getComp(comps, "premise");
-    const subpremise = getComp(comps, "subpremise");
-    const establishment = getComp(comps, "establishment");
-    const poi = getComp(comps, "point_of_interest");
-
-    const addressLine1 =
-        [subpremise, premise].filter(Boolean).join(", ") ||
-        [streetNumber, route].filter(Boolean).join(", ") ||
-        establishment || poi || route || "";
-
-    const addressLine2 =
-        getComp(comps, "sublocality_level_2") ||
-        getComp(comps, "sublocality_level_1") ||
-        getComp(comps, "sublocality") ||
-        getComp(comps, "neighborhood") || "";
-
-    const landmark =
-        (premise && !addressLine1.includes(premise)) ? premise :
-            (poi && !addressLine1.includes(poi)) ? poi : "";
-
-    const city =
-        getComp(comps, "locality") ||
-        getComp(comps, "administrative_area_level_3") ||
-        getComp(comps, "administrative_area_level_2") || "";
-
-    return {
-        addressLine1,
-        addressLine2,
-        landmark,
-        city,
-        state: getComp(comps, "administrative_area_level_1"),
-        country: getComp(comps, "country") || "India",
-        postalCode: getComp(comps, "postal_code"),
-        latitude: result.geometry?.location?.lat ?? fallbackLat,
-        longitude: result.geometry?.location?.lng ?? fallbackLng,
-    };
-}
-
-async function reverseGeocode(lat: number, lng: number): Promise<AddressResult> {
-    try {
-        const json = await googleGetRequest(API_ENDPOINTS.GOOGLE_GEOCODE, {
-            latlng: `${lat},${lng}`,
-            key: GOOGLE_API_KEY,
-        });
-
-        console.log(json);
-
-        return parseGeocodeResult(json, lat, lng);
-    } catch {
-        return emptyAddress(lat, lng);
+async function safeRequestPermission(): Promise<"granted" | "denied" | "blocked"> {
+    if (Platform.OS === "ios") {
+        // Community geolocation triggers the iOS permission dialog automatically
+        // on the first getCurrentPosition call — no manual step needed here.
+        return "granted";
     }
-}
 
-async function geocodeByPlaceId(
-    placeId: string,
-    lat: number,
-    lng: number
-): Promise<AddressResult> {
     try {
-        const json = await googleGetRequest(API_ENDPOINTS.GOOGLE_GEOCODE, {
-            place_id: placeId,
-            key: GOOGLE_API_KEY,
-        });
-
-        return parseGeocodeResult(json, lat, lng);
-    } catch {
-        return emptyAddress(lat, lng);
-    }
-}
-
-async function requestLocationPermission(): Promise<boolean> {
-    if (Platform.OS === "android") {
-        const granted = await PermissionsAndroid.request(
-            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+        // ✅ Always call request() directly — skipping the check() pre-flight.
+        // On Android, check() returns false even before the dialog has ever been
+        // shown, so pre-checking adds no value and can mask the actual result.
+        // request() handles all three outcomes: GRANTED, DENIED, NEVER_ASK_AGAIN.
+        const result = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+            {
+                title: "Location Permission Required",
+                message:
+                    "This app needs access to your location to automatically fill in your store address.",
+                buttonPositive: "Allow",
+                buttonNegative: "Deny",
+            }
         );
-        return granted === PermissionsAndroid.RESULTS.GRANTED;
+
+        if (result === PermissionsAndroid.RESULTS.GRANTED) return "granted";
+        if (result === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) return "blocked";
+        return "denied"; // DENIED — user tapped Deny but can be asked again
+    } catch {
+        return "denied";
     }
-    return true;
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── GPS position ─────────────────────────────────────────────────────────────
 
-const GoogleAddressPicker = ({ value, onChange }: Props) => {
-    const [modalVisible, setModalVisible] = useState(false);
-    const [locating, setLocating] = useState(false);
-    const [geocoding, setGeocoding] = useState(false);
-    const [draft, setDraft] = useState<AddressResult>(emptyAddress());
-    const [region, setRegion] = useState<Region>({
-        latitude: 23.0225, longitude: 72.5714,
-        latitudeDelta: 0.005, longitudeDelta: 0.005,
-    });
-
-    const mapRef = useRef<MapView>(null);
-    const autocompleteRef = useRef<any>(null);
-    const userIsDragging = useRef(false);
-    const geocodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    // ── Shared GPS fetch ──────────────────────────────────────────────────────
-    const fetchCurrentLocation = useCallback(async () => {
-        const ok = await requestLocationPermission();
-        if (!ok) return;
-        setLocating(true);
+function getGPSPosition(): Promise<{ lat: number; lng: number } | null> {
+    return new Promise((resolve) => {
         Geolocation.getCurrentPosition(
-            async (pos: any) => {
-                const { latitude, longitude } = pos.coords;
-                const newRegion = { latitude, longitude, latitudeDelta: 0.005, longitudeDelta: 0.005 };
-                userIsDragging.current = false;
-                setRegion(newRegion);
-                mapRef.current?.animateToRegion(newRegion, 600);
-                setLocating(false);
-                setGeocoding(true);
-                const addr = await reverseGeocode(latitude, longitude);
-                console.log(addr);
-                setDraft(addr);
-                setGeocoding(false);
+            (pos: any) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+            (err: any) => {
+                console.warn("GPS error:", err?.code, err?.message);
+                resolve(null);
             },
-            () => setLocating(false),
             { enableHighAccuracy: true, timeout: 15000 }
         );
-    }, []);
+    });
+}
 
-    // ── Open modal ────────────────────────────────────────────────────────────
-    const openModal = () => {
-        const hasCoords = value.latitude && value.latitude !== 0;
-        setDraft(hasCoords ? { ...value } : emptyAddress());
-        setRegion({
-            latitude: hasCoords ? value.latitude : 23.0225,
-            longitude: hasCoords ? value.longitude : 72.5714,
-            latitudeDelta: 0.005, longitudeDelta: 0.005,
-        });
-        userIsDragging.current = false;
-        setGeocoding(false);
-        setModalVisible(true);
-    };
+// ─── Reverse geocode ──────────────────────────────────────────────────────────
 
-    // Auto-trigger GPS when modal opens and no address saved yet
-    useEffect(() => {
-        if (modalVisible && (!value.latitude || value.latitude === 0)) {
-            fetchCurrentLocation();
+async function reverseGeocode(lat: number, lng: number): Promise<Partial<AddressResult> | null> {
+    try {
+        const res = await fetch(
+            `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`
+        );
+        const json = await res.json();
+        if (json.status !== "OK" || !json.results?.length) return null;
+
+        const components: any[] = json.results[0].address_components || [];
+        let streetNumber = "", route = "", sublocality = "";
+        let city = "", state = "", postalCode = "", country = "";
+
+        for (const c of components) {
+            const t: string[] = c.types || [];
+            if (t.includes("street_number")) streetNumber = c.long_name;
+            if (t.includes("route")) route = c.long_name;
+            if (t.includes("sublocality_level_1") || t.includes("sublocality")) sublocality = c.long_name;
+            if (t.includes("locality")) city = c.long_name;
+            if (t.includes("administrative_area_level_1")) state = c.long_name;
+            if (t.includes("postal_code")) postalCode = c.long_name;
+            if (t.includes("country")) country = c.long_name;
         }
-    }, [modalVisible]);
 
-    // ── Autocomplete ──────────────────────────────────────────────────────────
-    const handlePlaceSelect = async (data: any, detail: any) => {
-        const lat = detail?.geometry?.location?.lat ?? 0;
-        const lng = detail?.geometry?.location?.lng ?? 0;
-        const newRegion = { latitude: lat, longitude: lng, latitudeDelta: 0.005, longitudeDelta: 0.005 };
-        userIsDragging.current = false;
-        setRegion(newRegion);
-        mapRef.current?.animateToRegion(newRegion, 600);
-        setGeocoding(true);
-        const addr = await geocodeByPlaceId(data.place_id, lat, lng);
-        setDraft(addr);
-        setGeocoding(false);
-    };
+        return {
+            addressLine1: [streetNumber, route].filter(Boolean).join(" "),
+            addressLine2: sublocality,
+            landmark: "",
+            city,
+            state,
+            postalCode,
+            country: country || "India",
+            latitude: lat,
+            longitude: lng,
+        };
+    } catch {
+        return null;
+    }
+}
 
-    // ── Map drag ──────────────────────────────────────────────────────────────
-    const handleRegionChangeComplete = useCallback(async (r: Region) => {
-        setRegion(r);
-        if (!userIsDragging.current) return;
-        if (geocodeTimer.current) clearTimeout(geocodeTimer.current);
-        setGeocoding(true);
-        geocodeTimer.current = setTimeout(async () => {
-            const addr = await reverseGeocode(r.latitude, r.longitude);
-            setDraft(addr);
-            setGeocoding(false);
-            userIsDragging.current = false;
-        }, 800);
+// ─── Bottom Sheet ─────────────────────────────────────────────────────────────
+
+interface SheetProps {
+    visible: boolean;
+    onClose: () => void;
+    onSelect: (addr: AddressResult) => void;
+}
+
+const LocationBottomSheet: React.FC<SheetProps> = ({ visible, onClose, onSelect }) => {
+    const slideAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
+    const backdropAnim = useRef(new Animated.Value(0)).current;
+
+    const [query, setQuery] = useState("");
+    const [suggestions, setSuggestions] = useState<Prediction[]>([]);
+    const [isFetching, setIsFetching] = useState(false);
+    const [locationStatus, setLocationStatus] = useState<LocationStatus>("idle");
+    const [detectedAddr, setDetectedAddr] = useState<AddressResult | null>(null);
+
+    // ✅ Track whether permission is permanently blocked so the retry
+    // button shows "Open Settings" instead of re-triggering a dead request.
+    const [permBlocked, setPermBlocked] = useState(false);
+
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const isMountedRef = useRef(false);
+    const isDetectingRef = useRef(false);
+
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => { isMountedRef.current = false; };
     }, []);
 
-    const editDraft = (key: keyof AddressResult, val: string) =>
-        setDraft((prev) => ({ ...prev, [key]: val }));
+    // ── Animate sheet open / close ────────────────────────────────────────
+    useEffect(() => {
+        if (visible) {
+            setQuery("");
+            setSuggestions([]);
+            setLocationStatus("idle");
+            setDetectedAddr(null);
+            setPermBlocked(false);          // ✅ reset blocked state on every open
+            isDetectingRef.current = false;
 
-    const confirm = () => {
-        onChange({ ...draft });
-        setModalVisible(false);
+            Animated.parallel([
+                Animated.spring(slideAnim, {
+                    toValue: 0,
+                    useNativeDriver: true,
+                    damping: 22,
+                    stiffness: 220,
+                }),
+                Animated.timing(backdropAnim, {
+                    toValue: 1,
+                    duration: 240,
+                    useNativeDriver: true,
+                }),
+            ]).start();
+        } else {
+            Animated.parallel([
+                Animated.timing(slideAnim, {
+                    toValue: SHEET_HEIGHT,
+                    duration: 220,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(backdropAnim, {
+                    toValue: 0,
+                    duration: 220,
+                    useNativeDriver: true,
+                }),
+            ]).start();
+        }
+    }, [visible]);
+
+    // ── Auto-trigger on open (after animation settles) ────────────────────
+    useEffect(() => {
+        if (!visible) return;
+        const timer = setTimeout(() => {
+            if (isMountedRef.current) detectLocation();
+        }, 400);
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [visible]);
+
+    // ── Detect location ────────────────────────────────────────────────────
+    const detectLocation = useCallback(async () => {
+        if (isDetectingRef.current) return;
+        isDetectingRef.current = true;
+
+        if (isMountedRef.current) {
+            setLocationStatus("locating");
+            setDetectedAddr(null);
+            setPermBlocked(false);
+        }
+
+        // ── 1. Permission ──────────────────────────────────────────────────
+        let perm: "granted" | "denied" | "blocked";
+        try {
+            perm = await safeRequestPermission();
+        } catch {
+            perm = "denied";
+        }
+
+        if (!isMountedRef.current) { isDetectingRef.current = false; return; }
+
+        if (perm === "blocked") {
+            // ✅ Mark as blocked so the UI can show "Open Settings" on the card.
+            // Show the Alert after a short delay so the permission dialog has
+            // fully dismissed before Alert tries to grab the window focus.
+            setPermBlocked(true);
+            setLocationStatus("error");
+            isDetectingRef.current = false;
+            setTimeout(() => {
+                if (!isMountedRef.current) return;
+                Alert.alert(
+                    "Location Permission Blocked",
+                    "Location access has been permanently denied. Please open Settings and enable it for this app.",
+                    [
+                        {
+                            text: "Not Now",
+                            style: "cancel",
+                        },
+                        {
+                            text: "Open Settings",
+                            onPress: () => Linking.openSettings(),
+                        },
+                    ]
+                );
+            }, 350);
+            return;
+        }
+
+        if (perm === "denied") {
+            // ✅ User tapped Deny on the dialog this session.
+            // Show a brief explanation and let them retry (they can still be asked again).
+            if (isMountedRef.current) {
+                setLocationStatus("error");
+            }
+            isDetectingRef.current = false;
+            setTimeout(() => {
+                if (!isMountedRef.current) return;
+                Alert.alert(
+                    "Location Permission Denied",
+                    "We need location permission to detect your address automatically. Tap retry to try again.",
+                    [{ text: "OK", style: "cancel" }]
+                );
+            }, 350);
+            return;
+        }
+
+        // ── 2. GPS ─────────────────────────────────────────────────────────
+        const pos = await getGPSPosition();
+        if (!isMountedRef.current) { isDetectingRef.current = false; return; }
+
+        if (!pos) {
+            setLocationStatus("error");
+            isDetectingRef.current = false;
+            setTimeout(() => {
+                if (!isMountedRef.current) return;
+                Alert.alert(
+                    "GPS Unavailable",
+                    "Could not get your position. Make sure GPS / Location is turned on and try again.",
+                    [{ text: "OK", style: "cancel" }]
+                );
+            }, 350);
+            return;
+        }
+
+        // ── 3. Reverse geocode ─────────────────────────────────────────────
+        const addr = await reverseGeocode(pos.lat, pos.lng);
+        if (!isMountedRef.current) { isDetectingRef.current = false; return; }
+
+        if (!addr) {
+            setLocationStatus("error");
+            isDetectingRef.current = false;
+            return;
+        }
+
+        const result: AddressResult = {
+            addressLine1: addr.addressLine1 || "",
+            addressLine2: addr.addressLine2 || "",
+            landmark: "",
+            city: addr.city || "",
+            state: addr.state || "",
+            postalCode: addr.postalCode || "",
+            country: addr.country || "India",
+            latitude: pos.lat,
+            longitude: pos.lng,
+        };
+
+        setDetectedAddr(result);
+        setLocationStatus("success");
+        isDetectingRef.current = false;
+    }, []);
+
+    const confirmLocation = useCallback(() => {
+        if (detectedAddr) onSelect(detectedAddr);
+    }, [detectedAddr, onSelect]);
+
+    // ── What happens when the GPS card is tapped ──────────────────────────
+    // ✅ Three distinct actions depending on state:
+    //    success  → confirm and close
+    //    blocked  → jump straight to Settings (no point re-requesting)
+    //    error/idle → retry detectLocation
+    const handleCardPress = useCallback(() => {
+        if (locationStatus === "success") {
+            confirmLocation();
+        } else if (permBlocked) {
+            Linking.openSettings();
+        } else {
+            detectLocation();
+        }
+    }, [locationStatus, permBlocked, confirmLocation, detectLocation]);
+
+    // ── Search / autocomplete ─────────────────────────────────────────────
+    const handleSearch = useCallback((text: string) => {
+        setQuery(text);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        if (text.trim().length < 3) { setSuggestions([]); return; }
+
+        debounceRef.current = setTimeout(async () => {
+            if (!isMountedRef.current) return;
+            setIsFetching(true);
+            const result = await placesService.fetchAddressPredictions(text);
+            if (!isMountedRef.current) return;
+            setIsFetching(false);
+            if (result.success) setSuggestions(result.data);
+        }, 400);
+    }, []);
+
+    const handleSelect = useCallback(async (prediction: Prediction) => {
+        Keyboard.dismiss();
+        setQuery(prediction.description);
+        setSuggestions([]);
+        setIsFetching(true);
+
+        const details = await placesService.fetchPlaceDetailsById(prediction.place_id);
+        if (!isMountedRef.current) return;
+        setIsFetching(false);
+
+        if (details) {
+            onSelect({
+                addressLine1: details.addressLine1 || prediction.description,
+                addressLine2: details.addressLine2 || "",
+                landmark: "",
+                city: details.city,
+                state: details.state,
+                postalCode: details.postalCode,
+                country: details.country || "India",
+                latitude: details.lat,
+                longitude: details.lng,
+            });
+        }
+    }, [onSelect]);
+
+    const handleClose = useCallback(() => {
+        Keyboard.dismiss();
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        onClose();
+    }, [onClose]);
+
+    // ── Card label helpers ────────────────────────────────────────────────
+    const cardTitle = () => {
+        if (locationStatus === "locating") return "Detecting your location…";
+        if (locationStatus === "success") return "Location found! Tap to confirm";
+        if (locationStatus === "error" && permBlocked) return "Permission blocked — tap to open Settings";
+        if (locationStatus === "error") return "Couldn't detect. Tap to retry";
+        return "Use My Current Location";
     };
 
-    const summaryText = value.addressLine1
-        ? [value.addressLine1, value.city, value.state].filter(Boolean).join(", ")
-        : null;
-
-    const FIELDS: { key: keyof AddressResult; label: string; placeholder: string; keyboard?: any }[] = [
-        { key: "addressLine1", label: "Address Line 1 *", placeholder: "Shop No., Building, Street" },
-        { key: "addressLine2", label: "Area / Colony", placeholder: "Area, Colony (optional)" },
-        { key: "landmark", label: "Landmark", placeholder: "Near temple, opposite school…" },
-        { key: "city", label: "City *", placeholder: "Vadodara" },
-        { key: "state", label: "State *", placeholder: "Gujarat" },
-        { key: "postalCode", label: "Postal Code *", placeholder: "390001", keyboard: "number-pad" },
-    ];
+    const cardSubtitle = () => {
+        if (locationStatus === "idle") return "Accurate to ~10 meters using GPS";
+        if (locationStatus === "success" && detectedAddr) {
+            return [detectedAddr.addressLine1, detectedAddr.city, detectedAddr.state]
+                .filter(Boolean).join(", ");
+        }
+        if (locationStatus === "error" && permBlocked) return "Location permission was permanently denied";
+        if (locationStatus === "error") return "Check GPS is on, then tap to retry";
+        return null;
+    };
 
     return (
-        <>
-            {/* ─────────────────────────────────────────────────────────────────
-                Trigger field
-                Uses a flex row container — no absolute positioning needed.
-                Left icon | text | right chevron
-            ──────────────────────────────────────────────────────────────── */}
-            <TouchableOpacity onPress={openModal} activeOpacity={0.8}>
-                <View style={S.triggerRow}>
-                    {/* Left icon */}
-                    <Ionicons name="location-outline" size={20} color={colors.primary} style={S.triggerLeftIcon} />
+        <Modal
+            visible={visible}
+            transparent
+            animationType="none"
+            statusBarTranslucent
+            onRequestClose={handleClose}
+            hardwareAccelerated
+        >
+            <TouchableWithoutFeedback onPress={handleClose}>
+                <Animated.View style={[ss.backdrop, { opacity: backdropAnim }]} />
+            </TouchableWithoutFeedback>
 
-                    {/* Placeholder / value text */}
-                    <Text
-                        style={[S.triggerText, !summaryText && S.triggerPlaceholder]}
-                        numberOfLines={1}
-                        ellipsizeMode="tail"
+            <Animated.View style={[ss.sheet, { transform: [{ translateY: slideAnim }] }]}>
+                <View style={ss.handle} />
+
+                <View style={ss.header}>
+                    <Text style={ss.headerTitle}>Set Store Location</Text>
+                    <TouchableOpacity
+                        onPress={handleClose}
+                        style={ss.closeBtn}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
-                        {summaryText ?? "Search or pick location…"}
-                    </Text>
-
-                    {/* Right chevron */}
-                    <Ionicons name="chevron-forward-outline" size={18} color={colors.placeholder} />
-                </View>
-            </TouchableOpacity>
-
-            {/* ── Full-screen modal ── */}
-            <Modal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
-                <View style={{ flex: 1, backgroundColor: colors.scaffoldBg }}>
-
-                    {/* Header */}
-                    <View style={S.header}>
-                        <TouchableOpacity onPress={() => setModalVisible(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                            <Ionicons name="close" size={24} color={colors.secondary} />
-                        </TouchableOpacity>
-                        <Text style={S.headerTitle}>Choose Location</Text>
-                        <View style={{ width: 24 }} />
-                    </View>
-
-                    {/* Search bar */}
-                    <View style={S.searchWrapper}>
-                        <GooglePlacesAutocomplete
-                            ref={autocompleteRef}
-                            placeholder="Search area, street, landmark…"
-                            fetchDetails
-                            onPress={handlePlaceSelect}
-                            query={{ key: GOOGLE_API_KEY, language: "en", components: "country:in" }}
-                            styles={{
-                                container: { flex: 0, zIndex: 100 },
-                                textInputContainer: S.textInputContainer,
-                                textInput: S.searchInput,
-                                listView: S.suggestionList,
-                                row: S.suggestionRow,
-                                description: S.suggestionText,
-                                separator: { height: 0 },
-                                poweredContainer: { display: "none" },
-                            }}
-                            renderLeftButton={() => (
-                                <View style={S.searchIconWrap}>
-                                    <Ionicons name="search-outline" size={18} color={colors.placeholder} />
-                                </View>
-                            )}
-                            enablePoweredByContainer={false}
-                            keyboardShouldPersistTaps="handled"
-                        />
-                    </View>
-
-                    {/* GPS button */}
-                    <TouchableOpacity style={S.gpsBtn} onPress={fetchCurrentLocation} disabled={locating} activeOpacity={0.8}>
-                        {locating
-                            ? <ActivityIndicator size="small" color={colors.primary} />
-                            : <Ionicons name="navigate-outline" size={18} color={colors.primary} />
-                        }
-                        <Text style={S.gpsBtnText}>
-                            {locating ? "Getting your location…" : "Use current location"}
-                        </Text>
+                        <Ionicons name="close" size={20} color="#64748B" />
                     </TouchableOpacity>
+                </View>
 
-                    {/* Map */}
-                    <View style={S.mapContainer}>
-                        <MapView
-                            ref={mapRef}
-                            style={StyleSheet.absoluteFillObject}
-                            region={region}
-                            onPanDrag={() => { userIsDragging.current = true; }}
-                            onRegionChangeComplete={handleRegionChangeComplete}
-                            showsUserLocation
-                            showsMyLocationButton={false}
-                        />
-                        <View style={S.pinWrapper} pointerEvents="none">
-                            <Ionicons name="location" size={44} color={colors.primary} />
-                            <View style={S.pinShadow} />
+                <KeyboardAvoidingView
+                    style={{ flex: 1 }}
+                    behavior={Platform.OS === "ios" ? "padding" : undefined}
+                >
+                    <View style={ss.searchWrap}>
+                        <View style={ss.searchBar}>
+                            <Ionicons name="search-outline" size={18} color="#94A3B8" style={{ marginRight: 8 }} />
+                            <TextInput
+                                style={ss.searchInput}
+                                placeholder="Search area, street, landmark…"
+                                placeholderTextColor="#94A3B8"
+                                value={query}
+                                onChangeText={handleSearch}
+                                autoCorrect={false}
+                                returnKeyType="search"
+                            />
+                            {isFetching && (
+                                <ActivityIndicator size="small" color="#94A3B8" style={{ marginRight: 6 }} />
+                            )}
+                            {query.length > 0 && !isFetching && (
+                                <TouchableOpacity
+                                    onPress={() => { setQuery(""); setSuggestions([]); }}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                >
+                                    <Ionicons name="close-circle" size={18} color="#CBD5E1" />
+                                </TouchableOpacity>
+                            )}
                         </View>
-                        {geocoding && (
-                            <View style={S.geocodingBadge}>
-                                <ActivityIndicator size="small" color="#fff" />
-                                <Text style={S.geocodingText}>Finding address…</Text>
-                            </View>
-                        )}
                     </View>
 
-                    {/* Bottom sheet */}
-                    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-                        <ScrollView style={S.sheet} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                    {suggestions.length > 0 ? (
+                        <FlatList
+                            data={suggestions}
+                            keyExtractor={(item) => item.place_id}
+                            keyboardShouldPersistTaps="handled"
+                            ItemSeparatorComponent={() => <View style={ss.sep} />}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity
+                                    style={ss.row}
+                                    onPress={() => handleSelect(item)}
+                                    activeOpacity={0.7}
+                                >
+                                    <View style={ss.rowIcon}>
+                                        <Ionicons name="location-outline" size={16} color="#2563EB" />
+                                    </View>
+                                    <Text style={ss.rowText} numberOfLines={2}>{item.description}</Text>
+                                </TouchableOpacity>
+                            )}
+                        />
+                    ) : (
+                        <View style={ss.body}>
 
-                            {/* Address summary */}
-                            <View style={S.addressRow}>
-                                <View style={S.addressIconWrap}>
-                                    <Ionicons name="home-outline" size={18} color={colors.primary} />
+                            {/* ── GPS Card ── */}
+                            <TouchableOpacity
+                                style={[
+                                    ss.gpsCard,
+                                    locationStatus === "success" && ss.gpsCardSuccess,
+                                    locationStatus === "error" && ss.gpsCardError,
+                                ]}
+                                onPress={handleCardPress}
+                                disabled={locationStatus === "locating"}
+                                activeOpacity={0.8}
+                            >
+                                {/* Icon box */}
+                                <View style={[
+                                    ss.gpsIconBox,
+                                    locationStatus === "success" && ss.gpsIconBoxSuccess,
+                                    locationStatus === "error" && ss.gpsIconBoxError,
+                                ]}>
+                                    {locationStatus === "locating" && (
+                                        <ActivityIndicator size="small" color="#2563EB" />
+                                    )}
+                                    {locationStatus === "success" && (
+                                        <Ionicons name="checkmark-circle" size={22} color="#16A34A" />
+                                    )}
+                                    {locationStatus === "error" && !permBlocked && (
+                                        <Ionicons name="reload-outline" size={20} color="#DC2626" />
+                                    )}
+                                    {locationStatus === "error" && permBlocked && (
+                                        <Ionicons name="settings-outline" size={20} color="#DC2626" />
+                                    )}
+                                    {locationStatus === "idle" && (
+                                        <Ionicons name="navigate" size={20} color="#2563EB" />
+                                    )}
                                 </View>
+
+                                {/* Text */}
                                 <View style={{ flex: 1 }}>
-                                    <Text style={S.addressMain} numberOfLines={2}>
-                                        {geocoding ? "Finding address…" : draft.addressLine1 || "Drag the pin or search above"}
+                                    <Text
+                                        style={[
+                                            ss.gpsTitle,
+                                            locationStatus === "success" && { color: "#15803D" },
+                                            locationStatus === "error" && { color: "#DC2626" },
+                                        ]}
+                                        numberOfLines={2}
+                                    >
+                                        {cardTitle()}
                                     </Text>
-                                    {!geocoding && (draft.city || draft.state) ? (
-                                        <Text style={S.addressSub} numberOfLines={1}>
-                                            {[draft.city, draft.state].filter(Boolean).join(", ")}
+                                    {cardSubtitle() ? (
+                                        <Text style={ss.gpsSub} numberOfLines={2}>
+                                            {cardSubtitle()}
                                         </Text>
                                     ) : null}
                                 </View>
+
+                                {locationStatus !== "locating" && (
+                                    <Ionicons
+                                        name={
+                                            locationStatus === "success"
+                                                ? "arrow-forward-circle"
+                                                : permBlocked
+                                                    ? "open-outline"
+                                                    : "chevron-forward"
+                                        }
+                                        size={20}
+                                        color={locationStatus === "success" ? "#16A34A" : "#94A3B8"}
+                                    />
+                                )}
+                            </TouchableOpacity>
+
+                            <View style={ss.divRow}>
+                                <View style={ss.divLine} />
+                                <Text style={ss.divText}>or type to search</Text>
+                                <View style={ss.divLine} />
                             </View>
 
-                            <View style={S.sheetDivider} />
-                            <Text style={S.fieldsLabel}>Confirm or edit address</Text>
+                            <View style={ss.hint}>
+                                <Ionicons name="search" size={14} color="#CBD5E1" style={{ marginRight: 8 }} />
+                                <Text style={ss.hintText}>
+                                    Enter area, street name, or landmark above
+                                </Text>
+                            </View>
+                        </View>
+                    )}
+                </KeyboardAvoidingView>
+            </Animated.View>
+        </Modal>
+    );
+};
 
-                            {FIELDS.map(({ key, label, placeholder, keyboard }) => (
-                                <View key={key} style={S.fieldRow}>
-                                    <Text style={S.fieldLabel}>{label}</Text>
-                                    <TextInput
-                                        style={S.fieldInput}
-                                        value={String(draft[key] ?? "")}
-                                        onChangeText={(t) => editDraft(key, t)}
-                                        placeholder={placeholder}
-                                        placeholderTextColor={colors.placeholder}
-                                        autoCapitalize={keyboard === "number-pad" ? "none" : "words"}
-                                        keyboardType={keyboard ?? "default"}
-                                    />
-                                </View>
-                            ))}
+// ─── Exported Picker ──────────────────────────────────────────────────────────
 
-                            <TouchableOpacity
-                                style={[S.confirmBtn, (!draft.addressLine1 || geocoding) && S.confirmBtnDisabled]}
-                                onPress={confirm}
-                                disabled={!draft.addressLine1 || geocoding}
-                                activeOpacity={0.85}
-                            >
-                                <Ionicons name="checkmark-circle-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
-                                <Text style={S.confirmBtnText}>Confirm Location</Text>
-                            </TouchableOpacity>
-                        </ScrollView>
-                    </KeyboardAvoidingView>
+const GoogleAddressPicker: React.FC<Props> = ({ value, onChange }) => {
+    const [sheetOpen, setSheetOpen] = useState(false);
+    const display = [value.addressLine1, value.city, value.state].filter(Boolean).join(", ");
+
+    return (
+        <>
+            <TouchableOpacity
+                style={[ts.trigger, value.city ? ts.filled : null]}
+                onPress={() => setSheetOpen(true)}
+                activeOpacity={0.8}
+            >
+                <View style={ts.left}>
+                    <Ionicons
+                        name={value.city ? "location" : "locate-outline"}
+                        size={20}
+                        color="#2563EB"
+                        style={{ marginRight: 10 }}
+                    />
+                    <View style={{ flex: 1 }}>
+                        {value.city ? (
+                            <>
+                                <Text style={ts.label}>Store Location</Text>
+                                <Text style={ts.filledText} numberOfLines={1}>{display}</Text>
+                            </>
+                        ) : (
+                            <Text style={ts.placeholder}>Tap to set store location</Text>
+                        )}
+                    </View>
                 </View>
-            </Modal>
+                <Ionicons
+                    name={value.city ? "pencil-outline" : "chevron-forward"}
+                    size={16}
+                    color="#2563EB"
+                />
+            </TouchableOpacity>
+
+            <LocationBottomSheet
+                visible={sheetOpen}
+                onClose={() => setSheetOpen(false)}
+                onSelect={(addr) => {
+                    onChange(addr);
+                    setSheetOpen(false);
+                }}
+            />
         </>
     );
 };
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const S = StyleSheet.create({
+const ts = StyleSheet.create({
+    trigger: {
+        flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+        borderWidth: 1.5, borderColor: "#BFDBFE", borderRadius: 12,
+        backgroundColor: "#EFF6FF", paddingVertical: 13, paddingHorizontal: 14,
+    },
+    filled: { borderColor: "#2563EB" },
+    left: { flexDirection: "row", alignItems: "center", flex: 1, marginRight: 8 },
+    placeholder: { fontSize: 14, color: "#2563EB", fontWeight: "600" },
+    label: { fontSize: 11, color: "#2563EB", fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 },
+    filledText: { fontSize: 13, color: "#1E40AF", fontWeight: "500" },
+});
 
-    // ── Trigger row — pure flex, no absolute ──
-    triggerRow: {
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: "#FFFFFF",
-        borderRadius: 10,
-        borderWidth: 1.5,
-        borderColor: "#D1D5DB",
-        paddingHorizontal: 14,
-        height: 50,
+const ss = StyleSheet.create({
+    backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.52)" },
+    sheet: {
+        position: "absolute", bottom: 0, left: 0, right: 0, height: SHEET_HEIGHT,
+        backgroundColor: "#FFFFFF", borderTopLeftRadius: 24, borderTopRightRadius: 24,
+        shadowColor: "#000", shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.15, shadowRadius: 20, elevation: 24,
     },
-    triggerLeftIcon: {
-        marginRight: 10,
-    },
-    triggerText: {
-        flex: 1,
-        fontSize: 15,
-        color: "#1F2937",
-    },
-    triggerPlaceholder: {
-        color: "#9CA3AF",
-    },
-
-    // ── Modal header ──
+    handle: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: "#E2E8F0", marginTop: 12, marginBottom: 4 },
     header: {
         flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-        paddingHorizontal: 16,
-        paddingTop: Platform.OS === "ios" ? 56 : 16,
-        paddingBottom: 12,
-        backgroundColor: "#FFFFFF",
-        borderBottomWidth: 1, borderBottomColor: "#D1D5DB",
+        paddingHorizontal: 20, paddingVertical: 14,
+        borderBottomWidth: 1, borderBottomColor: "#F1F5F9",
     },
-    headerTitle: { fontSize: 17, fontWeight: "700", color: "#1F2937" },
-
-    // ── Search ──
-    searchWrapper: {
-        backgroundColor: "#FFFFFF",
-        paddingHorizontal: 12, paddingVertical: 8,
-        zIndex: 50, elevation: 50,
-    },
-    textInputContainer: {
+    headerTitle: { fontSize: 17, fontWeight: "700", color: "#0F172A" },
+    closeBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#F1F5F9", justifyContent: "center", alignItems: "center" },
+    searchWrap: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
+    searchBar: {
         flexDirection: "row", alignItems: "center",
-        backgroundColor: "#F5F5F5",
-        borderRadius: 10, borderWidth: 1.5, borderColor: "#D1D5DB",
-        paddingHorizontal: 8,
+        backgroundColor: "#F8FAFC", borderWidth: 1.5, borderColor: "#E2E8F0",
+        borderRadius: 12, paddingVertical: Platform.OS === "ios" ? 12 : 6, paddingHorizontal: 12,
     },
-    searchIconWrap: { justifyContent: "center", alignItems: "center", marginRight: 4 },
-    searchInput: {
-        flex: 1, height: 48,
-        fontSize: 15, color: "#1F2937",
-        backgroundColor: "transparent",
-        borderWidth: 0, paddingHorizontal: 4,
+    searchInput: { flex: 1, fontSize: 14, color: "#1E293B" },
+    sep: { height: 1, backgroundColor: "#F8FAFC", marginLeft: 58 },
+    row: { flexDirection: "row", alignItems: "center", paddingVertical: 14, paddingHorizontal: 16 },
+    rowIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#EFF6FF", justifyContent: "center", alignItems: "center", marginRight: 12 },
+    rowText: { flex: 1, fontSize: 14, color: "#1E293B", lineHeight: 20 },
+    body: { flex: 1, padding: 16 },
+    gpsCard: {
+        flexDirection: "row", alignItems: "center", gap: 12,
+        padding: 16, borderRadius: 14, borderWidth: 1.5,
+        borderColor: "#BFDBFE", backgroundColor: "#EFF6FF",
     },
-    suggestionList: {
-        position: "absolute", top: 54, left: 0, right: 0,
-        backgroundColor: "#FFFFFF", borderRadius: 10,
-        elevation: 20, zIndex: 200,
-        shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.12, shadowRadius: 10,
-        maxHeight: 220,
-    },
-    suggestionRow: { paddingHorizontal: 14, paddingVertical: 12 },
-    suggestionText: { fontSize: 14, color: "#1F2937" },
-
-    // ── GPS ──
-    gpsBtn: {
-        flexDirection: "row", alignItems: "center",
-        backgroundColor: "#EFF6FF",
-        marginHorizontal: 12, marginBottom: 8,
-        paddingVertical: 11, paddingHorizontal: 14,
-        borderRadius: 10, borderWidth: 1.5, borderColor: "#BFDBFE",
-    },
-    gpsBtnText: { marginLeft: 8, fontSize: 14, fontWeight: "600", color: colors.primary },
-
-    // ── Map ──
-    mapContainer: { height: SCREEN_H * 0.26, position: "relative" },
-    pinWrapper: {
-        position: "absolute",
-        top: "50%", left: "50%",
-        marginLeft: -22, marginTop: -44,
-        alignItems: "center",
-    },
-    pinShadow: {
-        width: 12, height: 5, borderRadius: 6,
-        backgroundColor: "rgba(0,0,0,0.18)", marginTop: -2,
-    },
-    geocodingBadge: {
-        position: "absolute", bottom: 10, alignSelf: "center",
-        flexDirection: "row", alignItems: "center",
-        backgroundColor: "rgba(0,0,0,0.65)", borderRadius: 20,
-        paddingHorizontal: 14, paddingVertical: 7,
-    },
-    geocodingText: { color: "#fff", fontSize: 12, marginLeft: 6, fontWeight: "500" },
-
-    // ── Bottom sheet ──
-    sheet: { flex: 1, backgroundColor: "#FFFFFF", paddingHorizontal: 16, paddingTop: 12 },
-    addressRow: { flexDirection: "row", alignItems: "center", paddingVertical: 12 },
-    addressIconWrap: {
-        width: 38, height: 38, borderRadius: 19,
-        backgroundColor: "#EFF6FF", justifyContent: "center", alignItems: "center", marginRight: 12,
-    },
-    addressMain: { fontSize: 14, fontWeight: "700", color: "#1F2937", lineHeight: 20 },
-    addressSub: { fontSize: 12, color: "#9CA3AF", marginTop: 2 },
-    sheetDivider: { height: 1, backgroundColor: "#D1D5DB", marginVertical: 8 },
-    fieldsLabel: {
-        fontSize: 11, fontWeight: "700", letterSpacing: 1.1,
-        color: "#9CA3AF", textTransform: "uppercase", marginBottom: 12, marginTop: 4,
-    },
-
-    fieldRow: { marginBottom: 12 },
-    fieldLabel: { fontSize: 12, fontWeight: "600", color: "#374151", marginBottom: 4 },
-    fieldInput: {
-        backgroundColor: "#F5F5F5",
-        borderRadius: 10, borderWidth: 1.5, borderColor: "#D1D5DB",
-        paddingVertical: Platform.OS === "ios" ? 12 : 9,
-        paddingHorizontal: 14, fontSize: 14, color: "#1F2937",
-    },
-
-    confirmBtn: {
-        backgroundColor: colors.primary, borderRadius: 12,
-        paddingVertical: 15, flexDirection: "row",
-        justifyContent: "center", alignItems: "center",
-        marginTop: 8, marginBottom: 32,
-        shadowColor: colors.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.25, shadowRadius: 8, elevation: 4,
-    },
-    confirmBtnDisabled: { opacity: 0.4, shadowOpacity: 0 },
-    confirmBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+    gpsCardSuccess: { borderColor: "#86EFAC", backgroundColor: "#F0FDF4" },
+    gpsCardError: { borderColor: "#FCA5A5", backgroundColor: "#FEF2F2" },
+    gpsIconBox: { width: 46, height: 46, borderRadius: 23, backgroundColor: "#DBEAFE", justifyContent: "center", alignItems: "center" },
+    gpsIconBoxSuccess: { backgroundColor: "#DCFCE7" },
+    gpsIconBoxError: { backgroundColor: "#FEE2E2" },
+    gpsTitle: { fontSize: 14, fontWeight: "700", color: "#1D4ED8", marginBottom: 3 },
+    gpsSub: { fontSize: 12, color: "#64748B", lineHeight: 17 },
+    divRow: { flexDirection: "row", alignItems: "center", marginVertical: 20 },
+    divLine: { flex: 1, height: 1, backgroundColor: "#E2E8F0" },
+    divText: { marginHorizontal: 12, fontSize: 12, color: "#94A3B8", fontWeight: "500" },
+    hint: { flexDirection: "row", alignItems: "center", backgroundColor: "#F8FAFC", borderRadius: 10, padding: 14 },
+    hintText: { flex: 1, fontSize: 13, color: "#94A3B8", lineHeight: 19 },
 });
 
 export default GoogleAddressPicker;

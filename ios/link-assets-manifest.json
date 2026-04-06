@@ -216,6 +216,22 @@
     {
       "path": "src/Assets/Fonts/static/Inter_28pt-ThinItalic.ttf",
       "sha1": "beed0d0fb7783d5da5d366036b5e481f895e1970"
+    },
+    {
+      "path": "src/Assets/legal/OonloopPrivacyPolicy.docx",
+      "sha1": "af107f7695788cc3891cbc7a7f53bc71fcf9042f"
+    },
+    {
+      "path": "src/Assets/legal/OonloopPrivacyPolicy1.pdf",
+      "sha1": "e9419f1617c2f658db8a663c85c09c289252eb91"
+    },
+    {
+      "path": "src/Assets/legal/OonloopTCFinal.docx",
+      "sha1": "646b028228e5d131d7c37d10458ec14233a9a260"
+    },
+    {
+      "path": "src/Assets/legal/OonloopTCFinal1.pdf",
+      "sha1": "ba2de64a55c5859c45c0cdf5441bc1f0f27e8397"
     }
   ]
 }

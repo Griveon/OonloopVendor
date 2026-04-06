@@ -55,9 +55,9 @@ const WORKING_DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "s
 const BUSINESS_TYPES = [
     { label: "Proprietorship", value: "proprietorship" },
     { label: "Partnership", value: "partnership" },
-    { label: "Private Ltd.", value: "private_ltd" },
+    { label: "Private Ltd.", value: "private_limited" },
     { label: "LLP", value: "llp" },
-    { label: "Public Ltd.", value: "public_ltd" },
+    { label: "Public Ltd.", value: "public_limited" },
 ];
 
 // ─── Step Indicator ──────────────────────────────────────────────────────────
@@ -563,6 +563,7 @@ const VendorBusinessInfoUpdatingScreen = ({ navigation }: any) => {
                                         value={form.storeLocationAddress}
                                         onChange={handleAddressChange}
                                     />
+
                                 </View>
 
                                 <View style={localStyles.divider} />

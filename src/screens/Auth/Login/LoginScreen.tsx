@@ -16,7 +16,8 @@ import {
 import { postRequest } from "../../../constants/ApiClient";
 import { appTheme, colors } from "../../../constants/AppThem";
 import { loginStyles, pinloginStyles, inputloginStyles } from "./LoginScreenStyle";
-import { getUserData } from "../../../components/AsyncStorage/AsyncStorage";
+import { getUserData, storeUserData } from "../../../components/AsyncStorage/AsyncStorage";
+import Toast from "react-native-toast-message";
 
 const { width } = Dimensions.get("window");
 const PIN_LENGTH = 6;
@@ -110,7 +111,7 @@ const PinInput = ({
 };
 
 const LoginScreen = ({ navigation }: any) => {
-    const [form, setForm] = useState<{ email: string; pin: string }>({ email: "", pin: "" });
+    const [form, setForm] = useState<{ email: string; pin: string, mobile: string }>({ email: "", pin: "", mobile: "" });
     const [loading, setLoading] = useState(false);
 
     const handleChange = (field: string, value: string) =>
@@ -135,12 +136,16 @@ const LoginScreen = ({ navigation }: any) => {
 
         checkStoredUser();
     }, []);
-    
+
     const handleLogin = async () => {
         try {
 
-            if (!form.email) {
-                ToastAndroid.show("Please enter your email.", ToastAndroid.SHORT);
+            // if (!form.email) {
+            //     ToastAndroid.show("Please enter your email.", ToastAndroid.SHORT);
+            //     return;
+            // }
+            if (!/^[6-9]\d{9}$/.test(form.mobile)) {
+                ToastAndroid.show("Enter a valid 10-digit mobile number.", ToastAndroid.SHORT);
                 return;
             }
             if ((form.pin ?? "").length < PIN_LENGTH) {
@@ -148,15 +153,29 @@ const LoginScreen = ({ navigation }: any) => {
                 return;
             }
             setLoading(true);
+            console.log(form.pin)
             const res: any = await postRequest("/auth/login", {
-                email: form.email,
+                identifier: form.mobile,
                 pin: form.pin,
             });
             setLoading(false);
 
             if (res?.success) {
-                ToastAndroid.show("Login successful!", ToastAndroid.LONG);
-                // navigation.navigate("Dashboard");
+                if (res?.success) {
+                    const user = res?.data;
+                    const token = res?.data?.token;
+
+                    await storeUserData(user, token);
+
+                    Toast.show({
+                        type: "success",
+                        text1: "Success",
+                        text2: "Logged In successful!",
+                    });
+
+                    navigation.navigate("Dashboard");
+
+                }
             } else {
                 setLoading(false);
                 ToastAndroid.show(res?.message ?? "Login failed.", ToastAndroid.LONG);
@@ -184,11 +203,11 @@ const LoginScreen = ({ navigation }: any) => {
 
                     {/* Illustration placeholder — swap with your asset */}
                     <View style={loginStyles.illustrationWrapper}>
-                        {/* If you have an image: */}
-                        {/* <Image source={require("../../../assets/grocery_illustration.png")} style={loginStyles.illustration} resizeMode="contain" /> */}
-                        <View style={loginStyles.illustrationPlaceholder}>
-                            <Text style={loginStyles.illustrationEmoji}>🛒</Text>
-                        </View>
+                        <Image
+                            source={require("../../../Assets/images/white_logo_transparent.png")}
+                            style={loginStyles.illustration}
+                            resizeMode="contain"
+                        />
                     </View>
                 </View>
 
@@ -201,15 +220,21 @@ const LoginScreen = ({ navigation }: any) => {
                     <Text style={loginStyles.subtitle}>
                         Fill your details or continue with vendor registration.
                     </Text>
-
                     <FloatingInput
+                        label="Mobile Number"
+                        placeholder="Enter your mobile number"
+                        keyboardType="phone-pad"
+                        value={form.mobile}
+                        onChangeText={(t: string) => handleChange("mobile", t)}
+                    />
+                    {/* <FloatingInput
                         label="Email"
                         placeholder="imshuvo97@gmail.com"
                         keyboardType="email-address"
                         autoCapitalize="none"
                         value={form.email}
                         onChangeText={(t: string) => handleChange("email", t)}
-                    />
+                    /> */}
 
                     <View style={loginStyles.pinSection}>
                         <Text style={inputloginStyles.label}>PIN</Text>
@@ -251,11 +276,24 @@ const LoginScreen = ({ navigation }: any) => {
                         <Text style={loginStyles.vendorBtnText}>Register as Vendor</Text>
                     </TouchableOpacity>
 
-                    <View style={loginStyles.signUpRow}>
-                        <Text style={loginStyles.signUpPrompt}>New User? </Text>
-                        <TouchableOpacity onPress={() => navigation?.navigate("SignUp")}>
-                            <Text style={loginStyles.signUpLink}>Create Account</Text>
-                        </TouchableOpacity>
+                    <View style={{ marginTop: 16, alignItems: "center", paddingHorizontal: 20 }}>
+                        <Text style={{ fontSize: 12, color: colors.placeholder, textAlign: "center" }}>
+                            By continuing, you agree to our{" "}
+                            <Text
+                                style={{ color: colors.primary, fontWeight: "600" }}
+                                onPress={() => navigation?.navigate("TermsAndCondition")}
+                            >
+                                Terms of Service
+                            </Text>{" "}
+                            and{" "}
+                            <Text
+                                style={{ color: colors.primary, fontWeight: "600" }}
+                                onPress={() => navigation?.navigate("PrivacyPolicy")}
+                            >
+                                Privacy Policy
+                            </Text>
+                            .
+                        </Text>
                     </View>
                 </View>
             </ScrollView>

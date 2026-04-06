@@ -22,7 +22,7 @@ const AppBar = ({ title, onBack, onMenu, rightElement }: AppBarProps) => {
         Platform.OS === "android" ? (StatusBar.currentHeight ?? 24) : 0;
 
     return (
-        <View style={[styles.container, { paddingTop: STATUS_BAR_HEIGHT + 16 }]}>
+        <View style={[styles.container, { paddingTop: STATUS_BAR_HEIGHT + 0 }]}>
             <View style={styles.row}>
                 {onBack ? (
                     <TouchableOpacity

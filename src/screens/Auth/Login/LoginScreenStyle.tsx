@@ -9,7 +9,7 @@ export const loginStyles = StyleSheet.create({
 
     // ── Hero ──────────────────────────────────────────
     heroBanner: {
-        height: 260,
+        height: 180,
         overflow: "hidden",
         alignItems: "center",
         justifyContent: "flex-end",
@@ -19,18 +19,19 @@ export const loginStyles = StyleSheet.create({
         top: 0,
         left: 0,
         right: 0,
-        height: 230,
+        height: 175,
         backgroundColor: colors.primary,
         borderBottomLeftRadius: 80,
         borderBottomRightRadius: 80,
     },
     illustrationWrapper: {
-        marginBottom: 8,
+        marginTop: 8,
+        marginBottom: 0,
         zIndex: 1,
     },
     illustrationPlaceholder: {
-        width: 160,
-        height: 160,
+        width: 200,
+        height: 200,
         alignItems: "center",
         justifyContent: "center",
     },

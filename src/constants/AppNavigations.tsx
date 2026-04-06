@@ -9,6 +9,18 @@ import SignUpScreen from "../screens/Auth/SignUp/SignUpScreen";
 import VendorRegistration from "../screens/Auth/VendorRegistration/VendorRegistration";
 import VendorBusinessInfoUpdatingScreen from "../screens/Auth/VendorRegistration/VendorBusinessInfoUpdatingScreen";
 import DashboardScreen from "../screens/Auth/Dashboard/DashboardScreen";
+import SubscriptionScreen from "../screens/Subscription/SubscriptionScreen";
+import BrandListScreen from "../screens/Brand/BrandListingScreen";
+import AddBrandScreen from "../screens/Brand/AddBrandScreen";
+import EditBrandScreen from "../screens/Brand/EditBrandScreen";
+import VendorProfileScreen from "../screens/VendorProfile/VendorProfileScreen";
+import PrivacyPolicyScreen from "../screens/PrivacyPolicy/PrivacyPolicyScreen";
+import TermsAndConditionsScreen from "../screens/TermsAndConditions/TermsAndConditionsScreen";
+import CouponListingScreen from "../screens/Coupon/CouponListingScreen";
+import AddCouponScreen from "../screens/Coupon/AddCouponScreen";
+import EditCouponScreen from "../screens/Coupon/EditCouponScreen";
+import VendorKycScreen from "../screens/KYC/VendorKycScreen";
+import ForgotPinScreen from "../screens/Auth/ForgotPin/ForgotPinScreen";
 // import DashboardScreen from "../screens/Dashboard/DashboardScreen"; // Uncomment when ready
 
 export type RootStackParamList = {
@@ -18,6 +30,19 @@ export type RootStackParamList = {
     VendorRegistration: undefined;
     VendorBusinessInfoUpdating: undefined;
     Dashboard: undefined;
+    Subscription: undefined;
+    BrandListing: undefined;
+    AddBrand: undefined;
+    EditBrand: undefined;
+    VendorProfile: undefined;
+    PrivacyPolicy: undefined;
+    TermsAndCondition: undefined;
+    VendorCouponListing: undefined;
+    AddCoupon: undefined;
+    EditCoupon: undefined;
+    VendorKYC: undefined;
+    ForgotPin: undefined;
+    
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -36,6 +61,18 @@ const AppNavigator = forwardRef<NavigationContainerRef<RootStackParamList>>((pro
                 <Stack.Screen name="VendorRegistration" component={VendorRegistration} />
                 <Stack.Screen name="VendorBusinessInfoUpdating" component={VendorBusinessInfoUpdatingScreen} />
                 <Stack.Screen name="Dashboard" component={DashboardScreen} />
+                <Stack.Screen name="Subscription" component={SubscriptionScreen} />
+                <Stack.Screen name="BrandListing" component={BrandListScreen} />
+                <Stack.Screen name="AddBrand" component={AddBrandScreen} />
+                <Stack.Screen name="EditBrand" component={EditBrandScreen} />
+                <Stack.Screen name="VendorCouponListing" component={CouponListingScreen} />
+                <Stack.Screen name="AddCoupon" component={AddCouponScreen} />
+                <Stack.Screen name="EditCoupon" component={EditCouponScreen} />
+                <Stack.Screen name="VendorKYC" component={VendorKycScreen} />
+                <Stack.Screen name="ForgotPin" component={ForgotPinScreen} />
+                <Stack.Screen name="VendorProfile" component={VendorProfileScreen} />
+                <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+                <Stack.Screen name="TermsAndCondition" component={TermsAndConditionsScreen} />
             </Stack.Navigator>
         </NavigationContainer>
     );

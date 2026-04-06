@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, TextStyle, ViewStyle } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { colors, inputStyles, localStyles } from "../../constants/AppThem";
 
@@ -15,7 +15,12 @@ interface FloatingInputProps {
     editable?: boolean;
     onPress?: () => void;
     rightIcon?: React.ReactNode;
-    type?: "text" | "password" | "select"; // add more types later
+    type?: "text" | "password" | "select";
+    multiline?: boolean;
+    numberOfLines?: number;
+    style?: TextStyle | ViewStyle;
+    onSubmitEditing?: () => void;
+    returnKeyType?: "done" | "go" | "next" | "search" | "send";
 }
 
 const FloatingInput: React.FC<FloatingInputProps> = ({
@@ -31,16 +36,18 @@ const FloatingInput: React.FC<FloatingInputProps> = ({
     onPress,
     rightIcon,
     type = "text",
+    multiline = false,
+    numberOfLines,
+    style,
 }) => {
     const [focused, setFocused] = useState(false);
     const [hidden, setHidden] = useState(secureTextEntry);
 
     const renderInput = () => {
         if (type === "select") {
-            // For select dropdown, make the TextInput non-editable
             return (
                 <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
-                    <View style={[inputStyles.input, focused && inputStyles.inputFocused]}>
+                    <View style={[inputStyles.input, focused && inputStyles.inputFocused, style] as any}>
                         <Text style={{ color: value ? colors.label : colors.placeholder }}>
                             {value || placeholder}
                         </Text>
@@ -58,7 +65,9 @@ const FloatingInput: React.FC<FloatingInputProps> = ({
                         focused ? inputStyles.inputFocused : undefined,
                         (showToggle || rightIcon) ? { paddingRight: 44 } : undefined,
                         !editable ? { color: colors.placeholder } : undefined,
-                    ]}
+                        multiline ? { height: undefined, textAlignVertical: "top" } : undefined,
+                        style,
+                    ] as any}
                     value={value}
                     onChangeText={onChangeText}
                     placeholder={placeholder}
@@ -70,6 +79,8 @@ const FloatingInput: React.FC<FloatingInputProps> = ({
                     onBlur={() => setFocused(false)}
                     editable={editable}
                     pointerEvents={editable ? "auto" : "none"}
+                    multiline={multiline}
+                    numberOfLines={numberOfLines}
                 />
                 {showToggle && type === "password" && (
                     <TouchableOpacity
