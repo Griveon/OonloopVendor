@@ -119,7 +119,7 @@ export const uploadRequest = async (
 
         console.log("comes inside")
         let headers: Record<string, string> = {
-            // ❌ DO NOT SET Content-Type manually
+
         };
 
         if (authRequired) {

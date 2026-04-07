@@ -1508,33 +1508,46 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                 });
             }
 
-            const variantsWithImages = variants.filter((v) => v.images.length > 0);
-            const savedVariants: any[] = createRes?.data?.variants ?? [];
+            try {
+                const variantsWithImages = variants.filter((v) => v.images.length > 0);
+                const savedVariants: any[] = createRes?.data?.variants ?? [];
 
-            await Promise.allSettled(
-                variantsWithImages.map(async (v, i) => {
-                    const variantDoc = savedVariants[i];
-                    if (!variantDoc?._id) return;
-                    const vForm = new FormData();
-                    vForm.append("productId", productId);
-                    vForm.append("variantId", variantDoc._id);
-                    v.images.forEach((img) => {
-                        vForm.append("variantImages", {
-                            uri: img.uri,
-                            name: img.name,
-                            type: img.type,
-                        } as any);
-                    });
-                    await fetch(`${API_ENDPOINTS.UPLOADPRODUCTVARIANTIMAGE}`, {
-                        method: "POST",
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                            "Content-Type": "multipart/form-data",
-                        },
-                        body: vForm,
-                    });
-                })
-            );
+                await Promise.allSettled(
+                    variantsWithImages.map(async (v, i) => {
+                        const variantDoc = savedVariants[i];
+                        if (!variantDoc?._id) return;
+
+                        const vForm = new FormData();
+                        vForm.append("productId", productId);
+                        vForm.append("variantId", variantDoc._id);
+
+                        v.images.forEach((img) => {
+                            vForm.append("variantImages", {
+                                uri: img.uri,
+                                name: img.name || `variant_${Date.now()}.jpg`,
+                                type: img.type || "image/jpeg",
+                            } as any);
+                        });
+
+                        const uploadRes = await uploadRequest(
+                            API_ENDPOINTS.UPLOADPRODUCTVARIANTIMAGE,
+                            vForm
+                        );
+
+                        if (!uploadRes?.success) {
+                            throw new Error("Variant image upload failed");
+                        }
+                    })
+                );
+            } catch (err) {
+                console.log("Variant image upload failed", err);
+
+                Toast.show({
+                    type: "error",
+                    text1: "Variant Image Upload Failed",
+                    text2: "Variants created but images failed to upload",
+                });
+            }
 
             setLoading(false);
             Toast.show({
