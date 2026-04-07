@@ -181,7 +181,7 @@ const AppDrawer = ({ navigation, closeDrawer }: any) => {
             key: "products",
             children: [
                 { icon: "bookmark-outline", label: "Brands", onPress: () => go("BrandListing") },
-                { icon: "bag-outline", label: "Products", onPress: () => go("Products") },
+                { icon: "bag-outline", label: "Products", onPress: () => go("ProductListing") },
             ],
         },
         {

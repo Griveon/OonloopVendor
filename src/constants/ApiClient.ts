@@ -109,3 +109,54 @@ export const googleGetRequest = async (endpoint: string, params: any) => {
         };
     }
 };
+
+export const uploadRequest = async (
+    endpoint: string,
+    formData: FormData,
+    authRequired = true
+) => {
+    try {
+
+        console.log("comes inside")
+        let headers: Record<string, string> = {
+            // ❌ DO NOT SET Content-Type manually
+        };
+
+        if (authRequired) {
+            const token = await AsyncStorage.getItem("userToken");
+            if (token) {
+                headers["Authorization"] = `Bearer ${token}`;
+            }
+        }
+
+        console.log("comes inside 2")
+        console.log(formData)
+
+
+        const response = await axios.post(
+            `${API_BASE_URL}${endpoint}`,
+            formData,
+            {
+                headers: {
+                    ...headers,
+                    "Content-Type": "multipart/form-data",
+                },
+                transformRequest: (data) => data,
+            }
+        );
+
+        return response.data;
+    } catch (error: any) {
+        console.error("UPLOAD API Error:", error?.response?.data || error);
+
+        showError(error?.response?.data || error);
+
+        return {
+            success: false,
+            message:
+                error?.response?.data?.message ||
+                error?.message ||
+                "Upload failed",
+        };
+    }
+};

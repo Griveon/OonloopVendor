@@ -21,6 +21,8 @@ import AddCouponScreen from "../screens/Coupon/AddCouponScreen";
 import EditCouponScreen from "../screens/Coupon/EditCouponScreen";
 import VendorKycScreen from "../screens/KYC/VendorKycScreen";
 import ForgotPinScreen from "../screens/Auth/ForgotPin/ForgotPinScreen";
+import ProductListingScreen from "../screens/Product/ProductListingScreen";
+import VendorAddProductScreen from "../screens/Product/AddProductScreen";
 // import DashboardScreen from "../screens/Dashboard/DashboardScreen"; // Uncomment when ready
 
 export type RootStackParamList = {
@@ -42,6 +44,8 @@ export type RootStackParamList = {
     EditCoupon: undefined;
     VendorKYC: undefined;
     ForgotPin: undefined;
+    ProductListing: undefined;
+    AddProduct: undefined;
     
 };
 
@@ -68,6 +72,8 @@ const AppNavigator = forwardRef<NavigationContainerRef<RootStackParamList>>((pro
                 <Stack.Screen name="VendorCouponListing" component={CouponListingScreen} />
                 <Stack.Screen name="AddCoupon" component={AddCouponScreen} />
                 <Stack.Screen name="EditCoupon" component={EditCouponScreen} />
+                <Stack.Screen name="ProductListing" component={ProductListingScreen} />
+                <Stack.Screen name="AddProduct" component={VendorAddProductScreen} />
                 <Stack.Screen name="VendorKYC" component={VendorKycScreen} />
                 <Stack.Screen name="ForgotPin" component={ForgotPinScreen} />
                 <Stack.Screen name="VendorProfile" component={VendorProfileScreen} />

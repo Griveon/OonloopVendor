@@ -10,7 +10,7 @@ export const API_ENDPOINTS = {
     GOOGLE_PLACE_DETAILS: "/place/details/json",
     GOOGLE_AUTOCOMPLETE: "/place/autocomplete/json",
     PLANSGETALL: "/plans/getall",
-    PAYMENTMETHODSGETALL:"/paymentmethod/getall",
+    PAYMENTMETHODSGETALL: "/paymentmethod/getall",
     BRANDSGETALL: "/brand/getall",
     BRANDSGETBYID: "/brand/get",
     BRANDUPDATE: "/brand/update",
@@ -21,4 +21,15 @@ export const API_ENDPOINTS = {
     VENDORCOUPONCREATE: "/vendorcoupon/create",
     VENDORCOUPONUPDATE: "/vendorcoupon/update",
     VENDORCOUPONGETBYID: "/vendorcoupon/get",
+    GETALLPRODUCTS: "/product/getall",
+    CREATEPRODUCT: "/product/create",
+    UPLOADPRODUCTIMAGE: "/product/image/upload",
+    UPLOADPRODUCTVARIANTIMAGE: "/product/variant/image/upload",
+    GETALLPRODUCTCATEGORIES: "/productcategory/getall",
+    GETALLVENDORCATEGORIES: "/vendorcategory/getall",
+    GETALLUNITS:"/unit/getall",
+    GETALLGSTRULES:"/gstrule/getall",
+    GETALLVARIANTS:"/productvariant/getall",
+
+
 }
