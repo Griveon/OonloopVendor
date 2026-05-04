@@ -19,6 +19,7 @@ import { getRequest, postRequest } from "../../constants/ApiClient";
 import { API_ENDPOINTS } from "../../constants/ApiEndpoints";
 import { colors } from "../../constants/AppThem";
 import RazorpayCheckout from "react-native-razorpay";
+import { getUserData } from "../../components/AsyncStorage/AsyncStorage";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -65,6 +66,23 @@ type PaymentMethod = {
     providerConnectionId?: string;
 };
 
+type UserSubscription = {
+    _id: string;
+    user: string;
+    plan: string;
+    status: "active" | "inactive" | "expired" | "cancelled";
+    startDate: string;
+    endDate: string;
+    billingCycle: string;
+    autoRenew: boolean;
+    features: string[];
+    paymentTransactionId: string;
+    externalPaymentId: string;
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const PLAN_FEATURES: Record<string, string[]> = {
@@ -103,6 +121,22 @@ const formatCharge = (charges: PaymentCharges): string => {
     return `+${charges.value}%`;
 };
 
+const formatDate = (dateStr: string): string => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+    });
+};
+
+const getDaysRemaining = (endDateStr: string): number => {
+    const now = new Date();
+    const end = new Date(endDateStr);
+    const diff = end.getTime() - now.getTime();
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+};
+
 // ─── Payment Method Icons ─────────────────────────────────────────────────────
 
 const PM_ICON: Record<string, string> = {
@@ -110,7 +144,144 @@ const PM_ICON: Record<string, string> = {
     online: "card-outline",
 };
 
+// ─── Active Subscription Banner ───────────────────────────────────────────────
+
+const ActiveSubscriptionBanner = ({
+    subscription,
+    plan,
+}: {
+    subscription: UserSubscription;
+    plan: Plan | undefined;
+}) => {
+    const pulseAnim = useRef(new Animated.Value(1)).current;
+    const daysLeft = getDaysRemaining(subscription.endDate);
+    const isExpiringSoon = daysLeft <= 7;
+
+    useEffect(() => {
+        const pulse = Animated.loop(
+            Animated.sequence([
+                Animated.timing(pulseAnim, {
+                    toValue: 1.15,
+                    duration: 900,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(pulseAnim, {
+                    toValue: 1,
+                    duration: 900,
+                    useNativeDriver: true,
+                }),
+            ])
+        );
+        pulse.start();
+        return () => pulse.stop();
+    }, []);
+
+    return (
+        <View style={bannerStyles.wrapper}>
+            {/* Gradient-like layered background */}
+            <View style={bannerStyles.bgLayer1} />
+            <View style={bannerStyles.bgLayer2} />
+
+            {/* Top row */}
+            <View style={bannerStyles.topRow}>
+                <View style={bannerStyles.activeDotWrap}>
+                    <Animated.View
+                        style={[bannerStyles.activeDotPulse, { transform: [{ scale: pulseAnim }] }]}
+                    />
+                    <View style={bannerStyles.activeDot} />
+                </View>
+                <Text style={bannerStyles.activeLabel}>ACTIVE PLAN</Text>
+                <View style={bannerStyles.autoRenewBadge}>
+                    <Ionicons name="refresh-outline" size={10} color="#fff" style={{ marginRight: 3 }} />
+                    <Text style={bannerStyles.autoRenewText}>Auto-Renew</Text>
+                </View>
+            </View>
+
+            {/* Plan name + price */}
+            <View style={bannerStyles.mainRow}>
+                <View style={{ flex: 1 }}>
+                    <Text style={bannerStyles.planName}>
+                        {plan?.displayName ?? "Subscription Plan"}
+                    </Text>
+                    <Text style={bannerStyles.billingCycle}>
+                        {subscription.billingCycle.charAt(0).toUpperCase() +
+                            subscription.billingCycle.slice(1)}{" "}
+                        Billing
+                    </Text>
+                </View>
+                {plan && (
+                    <View style={bannerStyles.priceWrap}>
+                        <Text style={bannerStyles.priceSymbol}>{plan.currency.symbol}</Text>
+                        <Text style={bannerStyles.priceAmount}>{plan.price}</Text>
+                        <Text style={bannerStyles.pricePeriod}>/mo</Text>
+                    </View>
+                )}
+            </View>
+
+            {/* Divider */}
+            <View style={bannerStyles.divider} />
+
+            {/* Dates row */}
+            <View style={bannerStyles.datesRow}>
+                <View style={bannerStyles.dateItem}>
+                    <Ionicons name="calendar-outline" size={13} color="rgba(255,255,255,0.7)" />
+                    <View style={{ marginLeft: 6 }}>
+                        <Text style={bannerStyles.dateLabel}>Started</Text>
+                        <Text style={bannerStyles.dateValue}>{formatDate(subscription.startDate)}</Text>
+                    </View>
+                </View>
+
+                <View style={bannerStyles.dateSep} />
+
+                <View style={bannerStyles.dateItem}>
+                    <Ionicons name="time-outline" size={13} color="rgba(255,255,255,0.7)" />
+                    <View style={{ marginLeft: 6 }}>
+                        <Text style={bannerStyles.dateLabel}>Renews</Text>
+                        <Text style={bannerStyles.dateValue}>{formatDate(subscription.endDate)}</Text>
+                    </View>
+                </View>
+
+                <View style={bannerStyles.dateSep} />
+
+                <View style={bannerStyles.dateItem}>
+                    <Ionicons
+                        name="hourglass-outline"
+                        size={13}
+                        color={isExpiringSoon ? "#FCD34D" : "rgba(255,255,255,0.7)"}
+                    />
+                    <View style={{ marginLeft: 6 }}>
+                        <Text style={bannerStyles.dateLabel}>Remaining</Text>
+                        <Text
+                            style={[
+                                bannerStyles.dateValue,
+                                isExpiringSoon && { color: "#FCD34D", fontWeight: "700" },
+                            ]}
+                        >
+                            {daysLeft} days
+                        </Text>
+                    </View>
+                </View>
+            </View>
+
+            {/* Bottom chip */}
+            <View style={bannerStyles.chipRow}>
+                <View style={bannerStyles.chip}>
+                    <Ionicons name="shield-checkmark" size={12} color={colors.primary} style={{ marginRight: 4 }} />
+                    <Text style={bannerStyles.chipText}>Protected & Secure</Text>
+                </View>
+                <View style={bannerStyles.chip}>
+                    <Ionicons name="checkmark-circle" size={12} color="#10B981" style={{ marginRight: 4 }} />
+                    <Text style={[bannerStyles.chipText, { color: "#10B981" }]}>
+                        All features unlocked
+                    </Text>
+                </View>
+            </View>
+        </View>
+    );
+};
+
 // ─── Payment Bottom Sheet ─────────────────────────────────────────────────────
+const GST_RATE = 0.18;
 
 const PaymentSheet = ({
     plan,
@@ -128,8 +299,9 @@ const PaymentSheet = ({
     const insets = useSafeAreaInsets();
     const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
     const fadeAnim = useRef(new Animated.Value(0)).current;
+
     const [selected, setSelected] = useState<PaymentMethod | null>(
-        methods.find((m) => m.priority === 1) ?? methods[0] ?? null
+        methods[0] ?? null
     );
 
     useEffect(() => {
@@ -163,16 +335,15 @@ const PaymentSheet = ({
         ]).start(() => onClose());
     };
 
-    const finalPrice = selected ? calcFinalPrice(plan.price, selected) : plan.price;
+    const gstAmount = plan.price * GST_RATE;
+    const finalPrice = plan.price + gstAmount;
 
     return (
         <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-            {/* Backdrop */}
             <TouchableWithoutFeedback onPress={close}>
                 <Animated.View style={[sheetStyles.backdrop, { opacity: fadeAnim }]} />
             </TouchableWithoutFeedback>
 
-            {/* Sheet */}
             <Animated.View
                 style={[
                     sheetStyles.sheet,
@@ -182,40 +353,32 @@ const PaymentSheet = ({
                     },
                 ]}
             >
-                {/* Handle */}
                 <View style={sheetStyles.handle} />
 
-                {/* Header */}
                 <View style={sheetStyles.header}>
                     <View>
                         <Text style={sheetStyles.headerTitle}>Select Payment Method</Text>
                         <Text style={sheetStyles.headerSub}>for {plan.displayName}</Text>
                     </View>
-                    <TouchableOpacity
-                        onPress={close}
-                        style={sheetStyles.closeBtn}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
+                    <TouchableOpacity onPress={close} style={sheetStyles.closeBtn}>
                         <Ionicons name="close" size={18} color={colors.secondary} />
                     </TouchableOpacity>
                 </View>
 
-                {/* Plan summary pill */}
                 <View style={sheetStyles.planPill}>
                     <Ionicons name="flash" size={14} color={colors.primary} style={{ marginRight: 6 }} />
                     <Text style={sheetStyles.planPillText}>{plan.displayName}</Text>
                     <Text style={sheetStyles.planPillPrice}>
                         {plan.currency.symbol}{plan.price}
-                        <Text style={sheetStyles.planPillCycle}>/{plan.billingCycle}</Text>
+                        <Text style={{ fontSize: 10 }}> +18% GST</Text>
                     </Text>
                 </View>
 
-                {/* Payment Methods */}
                 <Text style={sheetStyles.sectionLabel}>Payment Options</Text>
 
                 {methods.map((method) => {
                     const isSelected = selected?._id === method._id;
-                    const charge = formatCharge(method.charges);
+
                     return (
                         <TouchableOpacity
                             key={method._id}
@@ -226,7 +389,6 @@ const PaymentSheet = ({
                             onPress={() => setSelected(method)}
                             activeOpacity={0.75}
                         >
-                            {/* Icon */}
                             <View
                                 style={[
                                     sheetStyles.methodIcon,
@@ -240,72 +402,38 @@ const PaymentSheet = ({
                                 />
                             </View>
 
-                            {/* Info */}
                             <View style={{ flex: 1, marginLeft: 12 }}>
                                 <Text style={[sheetStyles.methodName, isSelected && { color: colors.primary }]}>
                                     {method.name}
                                 </Text>
-                                {method.rules.minAmount || method.rules.maxAmount ? (
-                                    <Text style={sheetStyles.methodMeta}>
-                                        {method.rules.minAmount && `Min ₹${method.rules.minAmount}`}
-                                        {method.rules.minAmount && method.rules.maxAmount && " · "}
-                                        {method.rules.maxAmount && `Max ₹${method.rules.maxAmount}`}
-                                    </Text>
-                                ) : null}
-                            </View>
-
-                            {/* Charge badge */}
-                            <View
-                                style={[
-                                    sheetStyles.chargeBadge,
-                                    { backgroundColor: charge === "Free" ? "#D1FAE5" : "#FEF3C7" },
-                                ]}
-                            >
-                                <Text
-                                    style={[
-                                        sheetStyles.chargeBadgeText,
-                                        { color: charge === "Free" ? "#065F46" : "#92400E" },
-                                    ]}
-                                >
-                                    {charge}
-                                </Text>
-                            </View>
-
-                            {/* Radio */}
-                            <View style={[sheetStyles.radio, isSelected && sheetStyles.radioSelected]}>
-                                {isSelected && <View style={sheetStyles.radioDot} />}
                             </View>
                         </TouchableOpacity>
                     );
                 })}
 
-                {/* Price breakdown */}
-                {selected && selected.charges.value > 0 && (
-                    <View style={sheetStyles.breakdown}>
-                        <View style={sheetStyles.breakdownRow}>
-                            <Text style={sheetStyles.breakdownLabel}>Plan price</Text>
-                            <Text style={sheetStyles.breakdownValue}>
-                                {plan.currency.symbol}{plan.price}
-                            </Text>
-                        </View>
-                        <View style={sheetStyles.breakdownRow}>
-                            <Text style={sheetStyles.breakdownLabel}>
-                                {selected.name} charge ({formatCharge(selected.charges)})
-                            </Text>
-                            <Text style={sheetStyles.breakdownValue}>
-                                +{plan.currency.symbol}{(finalPrice - plan.price).toFixed(2)}
-                            </Text>
-                        </View>
-                        <View style={[sheetStyles.breakdownRow, sheetStyles.breakdownTotal]}>
-                            <Text style={sheetStyles.breakdownTotalLabel}>Total</Text>
-                            <Text style={[sheetStyles.breakdownTotalValue, { color: colors.primary }]}>
-                                {plan.currency.symbol}{finalPrice.toFixed(2)}
-                            </Text>
-                        </View>
+                <View style={sheetStyles.breakdown}>
+                    <View style={sheetStyles.breakdownRow}>
+                        <Text style={sheetStyles.breakdownLabel}>Plan price</Text>
+                        <Text style={sheetStyles.breakdownValue}>
+                            {plan.currency.symbol}{plan.price}
+                        </Text>
                     </View>
-                )}
 
-                {/* Pay button */}
+                    <View style={sheetStyles.breakdownRow}>
+                        <Text style={sheetStyles.breakdownLabel}>GST (18%)</Text>
+                        <Text style={sheetStyles.breakdownValue}>
+                            +{plan.currency.symbol}{gstAmount.toFixed(2)}
+                        </Text>
+                    </View>
+
+                    <View style={[sheetStyles.breakdownRow, sheetStyles.breakdownTotal]}>
+                        <Text style={sheetStyles.breakdownTotalLabel}>Total</Text>
+                        <Text style={[sheetStyles.breakdownTotalValue, { color: colors.primary }]}>
+                            {plan.currency.symbol}{finalPrice.toFixed(2)}
+                        </Text>
+                    </View>
+                </View>
+
                 <TouchableOpacity
                     style={[
                         sheetStyles.payBtn,
@@ -314,7 +442,6 @@ const PaymentSheet = ({
                     ]}
                     disabled={!selected || paying}
                     onPress={() => selected && onPay(plan, selected)}
-                    activeOpacity={0.85}
                 >
                     {paying ? (
                         <ActivityIndicator color="#fff" />
@@ -322,16 +449,17 @@ const PaymentSheet = ({
                         <>
                             <Ionicons name="lock-closed-outline" size={16} color="#fff" style={{ marginRight: 8 }} />
                             <Text style={sheetStyles.payBtnText}>
-                                Pay {plan.currency.symbol}{finalPrice.toFixed(2)} Securely
+                                Pay {plan.currency.symbol}{finalPrice.toFixed(2)}
                             </Text>
                         </>
                     )}
                 </TouchableOpacity>
 
-                {/* Trust line */}
                 <View style={sheetStyles.trustRow}>
-                    <Ionicons name="shield-checkmark-outline" size={13} color={colors.placeholder} style={{ marginRight: 4 }} />
-                    <Text style={sheetStyles.trustText}>256-bit encrypted · Powered by Razorpay</Text>
+                    <Ionicons name="shield-checkmark-outline" size={13} color={colors.placeholder} />
+                    <Text style={sheetStyles.trustText}>
+                        {" "}256-bit encrypted · Powered by Razorpay
+                    </Text>
                 </View>
             </Animated.View>
         </View>
@@ -359,10 +487,12 @@ const PlanCard = ({
     plan,
     index,
     onSubscribePress,
+    isCurrentPlan,
 }: {
     plan: Plan;
     index: number;
     onSubscribePress: (plan: Plan) => void;
+    isCurrentPlan: boolean;
 }) => {
     const pal = palette(index);
     const features = getPlanFeatures(plan.name);
@@ -370,27 +500,50 @@ const PlanCard = ({
 
     return (
         <View style={styles.cardWrapper}>
-            {isPopular && (
+            {isPopular && !isCurrentPlan && (
                 <View style={[styles.popularTag, { backgroundColor: pal.bg }]}>
                     <Ionicons name="star" size={11} color="#fff" style={{ marginRight: 4 }} />
                     <Text style={styles.popularTagText}>Most Popular</Text>
                 </View>
             )}
 
-            <View style={[styles.card, isPopular && { borderColor: pal.bg, borderWidth: 1.5 }]}>
-                <View style={[styles.cardHeader, { backgroundColor: pal.light }]}>
+            {isCurrentPlan && (
+                <View style={[styles.popularTag, { backgroundColor: "#10B981" }]}>
+                    <Ionicons name="checkmark-circle" size={11} color="#fff" style={{ marginRight: 4 }} />
+                    <Text style={styles.popularTagText}>Your Current Plan</Text>
+                </View>
+            )}
+
+            <View
+                style={[
+                    styles.card,
+                    isCurrentPlan
+                        ? { borderColor: "#10B981", borderWidth: 2 }
+                        : isPopular
+                            ? { borderColor: pal.bg, borderWidth: 1.5 }
+                            : {},
+                ]}
+            >
+                <View style={[styles.cardHeader, { backgroundColor: isCurrentPlan ? "#10B98114" : pal.light }]}>
                     <View style={styles.cardHeaderLeft}>
-                        <View style={[styles.planIconWrap, { backgroundColor: pal.bg }]}>
-                            <Ionicons name="flash" size={18} color="#fff" />
+                        <View style={[styles.planIconWrap, { backgroundColor: isCurrentPlan ? "#10B981" : pal.bg }]}>
+                            <Ionicons name={isCurrentPlan ? "checkmark" : "flash"} size={18} color="#fff" />
                         </View>
                         <View style={{ marginLeft: 12, flex: 1 }}>
                             <Text style={styles.planDisplayName}>{plan.displayName}</Text>
-                            <CycleBadge cycle={plan.billingCycle} color={pal.badge} />
+                            <CycleBadge cycle={plan.billingCycle} color={isCurrentPlan ? "#D1FAE5" : pal.badge} />
                         </View>
                     </View>
                     <View style={styles.priceBlock}>
-                        <Text style={[styles.priceSymbol, { color: pal.bg }]}>{plan.currency.symbol}</Text>
-                        <Text style={[styles.priceAmount, { color: pal.bg }]}>{plan.price}</Text>
+                        <Text style={[styles.priceSymbol, { color: isCurrentPlan ? "#10B981" : pal.bg }]}>
+                            {plan.currency.symbol}
+                        </Text>
+                        <Text style={[styles.priceAmount, { color: isCurrentPlan ? "#10B981" : pal.bg }]}>
+                            {plan.price}
+                        </Text>
+                        <Text style={{ fontSize: 12, marginLeft: 4, alignSelf: "flex-end", color: isCurrentPlan ? "#10B981" : pal.bg }}>
+                            +18%
+                        </Text>
                     </View>
                 </View>
 
@@ -399,18 +552,25 @@ const PlanCard = ({
 
                 <View style={styles.featureList}>
                     {features.map((f, i) => (
-                        <FeatureRow key={i} text={f} accent={pal.light} />
+                        <FeatureRow key={i} text={f} accent={isCurrentPlan ? "#10B98114" : pal.light} />
                     ))}
                 </View>
 
-                <TouchableOpacity
-                    style={[styles.subscribeBtn, { backgroundColor: pal.bg }]}
-                    activeOpacity={0.85}
-                    onPress={() => onSubscribePress(plan)}
-                >
-                    <Text style={styles.subscribeBtnText}>Subscribe Now</Text>
-                    <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 8 }} />
-                </TouchableOpacity>
+                {isCurrentPlan ? (
+                    <View style={[styles.activePlanBtn, { borderColor: "#10B981" }]}>
+                        <Ionicons name="checkmark-circle" size={16} color="#10B981" style={{ marginRight: 8 }} />
+                        <Text style={[styles.activePlanBtnText, { color: "#10B981" }]}>Currently Active</Text>
+                    </View>
+                ) : (
+                    <TouchableOpacity
+                        style={[styles.subscribeBtn, { backgroundColor: pal.bg }]}
+                        activeOpacity={0.85}
+                        onPress={() => onSubscribePress(plan)}
+                    >
+                        <Text style={styles.subscribeBtnText}>Subscribe Now</Text>
+                        <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 8 }} />
+                    </TouchableOpacity>
+                )}
             </View>
         </View>
     );
@@ -418,11 +578,17 @@ const PlanCard = ({
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
-const RAZORPAY_KEY = "rzp_test_XXXXXXXXXXXXXXXX"; // 🔑 replace with your key
+const GST_RATE_CONST = 0.18;
+
+const getFinalAmount = (price: number) => {
+    const gst = price * GST_RATE_CONST;
+    return price + gst;
+};
 
 const SubscriptionScreen = ({ navigation }: any) => {
     const insets = useSafeAreaInsets();
     const [plans, setPlans] = useState<Plan[]>([]);
+    const [userSubscription, setUserSubscription] = useState<UserSubscription | null>(null);
     const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
@@ -433,69 +599,121 @@ const SubscriptionScreen = ({ navigation }: any) => {
     }, []);
 
     const fetchAll = async () => {
-        setLoading(true);
-        const [plansRes, methodsRes] = await Promise.all([
-            getRequest(API_ENDPOINTS.PLANSGETALL),
-            getRequest(API_ENDPOINTS.PAYMENTMETHODSGETALL),
-        ]);
-        setLoading(false);
+        try {
+            setLoading(true);
 
-        if (plansRes?.success) setPlans(plansRes.data);
-        if (methodsRes?.success) {
-            // sort by priority, keep only active
-            const active = (methodsRes.data as PaymentMethod[])
-                .filter((m) => m?.providerConnectionId)
-                .sort((a, b) => a.priority - b.priority);
-            setPaymentMethods(active);
+            const { user } = await getUserData();
+
+            const [subscriptionRes, plansRes, methodsRes] = await Promise.all([
+                getRequest(
+                    `${API_ENDPOINTS.VENDORSUBSCRIPTIONGETBYUSER}/${user?.user?._id}`,
+                    undefined,   // params
+                    true,        // authRequired
+                    false         // isShowError
+                ),
+                getRequest(API_ENDPOINTS.PLANSGETALL),
+                getRequest(API_ENDPOINTS.PAYMENTMETHODSGETALL),
+            ]);
+
+            if (subscriptionRes?.success && subscriptionRes?.data) {
+                const sub = subscriptionRes.data;
+                // Handle both array and single object responses
+                if (Array.isArray(sub)) {
+                    const activeSub = sub.find((s: UserSubscription) => s.isActive && s.status === "active");
+                    setUserSubscription(activeSub ?? null);
+                } else {
+                    setUserSubscription(sub.isActive && sub.status === "active" ? sub : null);
+                }
+            }
+
+            if (plansRes?.success) {
+                setPlans(plansRes?.data ?? []);
+            }
+
+            if (methodsRes?.success) {
+                const active = (methodsRes.data as PaymentMethod[])
+                    .filter((m) => m?.providerConnectionId)
+                    .sort((a, b) => a.priority - b.priority);
+                setPaymentMethods(active);
+            }
+        } catch (err) {
+            console.error("Fetch error:", err);
+        } finally {
+            setLoading(false);
         }
     };
 
     const handlePay = async (plan: Plan, method: PaymentMethod) => {
         if (method.type === "cod") {
-
             setPaying(true);
+
             const res = await postRequest("/subscriptions/create", {
                 planId: plan._id,
                 paymentMethodId: method._id,
                 paymentType: "cod",
             });
+
             setPaying(false);
 
             if (res?.success) {
                 setSelectedPlan(null);
-                Toast.show({ type: "success", text1: "Subscribed!", text2: `You are now on ${plan.displayName}`, position: "top" });
+                fetchAll(); 
+                Toast.show({
+                    type: "success",
+                    text1: "Subscribed!",
+                    text2: `You are now on ${plan.displayName}`,
+                    position: "top",
+                });
             } else {
-                Toast.show({ type: "error", text1: "Failed", text2: res?.message, position: "top" });
+                Toast.show({
+                    type: "error",
+                    text1: "Failed",
+                    text2: res?.message,
+                    position: "top",
+                });
             }
             return;
         }
 
-        // Online → Razorpay
+        // ONLINE PAYMENT
         setPaying(true);
 
-        // Step 1: create order on your backend
-        const orderRes = await postRequest("/subscriptions/create-order", {
+        const finalAmount = getFinalAmount(plan.price);
+        const amountInPaise = Math.round(finalAmount * 100);
+
+        const { user } = await getUserData();
+
+        const orderRes = await postRequest(API_ENDPOINTS.PAYMENTTRANSACTIONCREATE, {
+            paymentMethod: method._id,
+            providerConnection: method.providerConnectionId,
+            amount: amountInPaise,
+            currency: plan.currency.code || "INR",
+            userId: user?.user?._id,
             planId: plan._id,
-            paymentMethodId: method._id,
         });
 
         if (!orderRes?.success) {
             setPaying(false);
-            Toast.show({ type: "error", text1: "Order creation failed", text2: orderRes?.message, position: "top" });
+            Toast.show({
+                type: "error",
+                text1: "Order creation failed",
+                text2: orderRes?.message,
+                position: "top",
+            });
             return;
         }
 
-        const { orderId, amount, currency } = orderRes.data;
+        const { orderId, amount, currency, key, transactionId } = orderRes.data;
 
         const options: any = {
             description: plan.displayName,
-            currency: currency ?? plan.currency.code,
-            key: RAZORPAY_KEY,
-            amount: String(amount), // in paise
+            currency: currency ?? "INR",
+            key: key,
+            amount: String(amount),
             order_id: orderId,
-            name: "Your App Name",
+            name: "Oonloop",
             prefill: {
-                email: "vendor@example.com", // TODO: pull from user store
+                email: "vendor@example.com",
                 contact: "9999999999",
                 name: "Vendor User",
             },
@@ -505,30 +723,50 @@ const SubscriptionScreen = ({ navigation }: any) => {
         try {
             const paymentData = await RazorpayCheckout.open(options);
 
-            // Step 2: verify on backend
-            const verifyRes = await postRequest("/subscriptions/verify-payment", {
+            const verifyRes = await postRequest(API_ENDPOINTS.PAYMENTTRANSACTIONVERIFY, {
+                transactionId,
                 razorpay_order_id: paymentData.razorpay_order_id,
                 razorpay_payment_id: paymentData.razorpay_payment_id,
                 razorpay_signature: paymentData.razorpay_signature,
-                planId: plan._id,
             });
 
             setPaying(false);
 
             if (verifyRes?.success) {
                 setSelectedPlan(null);
-                Toast.show({ type: "success", text1: "Payment Successful 🎉", text2: `${plan.displayName} is now active!`, position: "top" });
+                fetchAll(); // Refresh to show updated subscription status
+                Toast.show({
+                    type: "success",
+                    text1: "Payment Successful 🎉",
+                    text2: `${plan.displayName} is now active!`,
+                    position: "top",
+                });
             } else {
-                Toast.show({ type: "error", text1: "Verification failed", text2: verifyRes?.message, position: "top" });
+                Toast.show({
+                    type: "error",
+                    text1: "Verification failed",
+                    text2: verifyRes?.message,
+                    position: "top",
+                });
             }
         } catch (err: any) {
             setPaying(false);
-            // User cancelled → code 0
+
             if (err?.code !== 0) {
-                Toast.show({ type: "error", text1: "Payment failed", text2: err?.description ?? "Please try again.", position: "top" });
+                Toast.show({
+                    type: "error",
+                    text1: "Payment failed",
+                    text2: err?.description ?? "Please try again.",
+                    position: "top",
+                });
             }
         }
     };
+
+    // Find the plan object matching the active subscription
+    const activePlan = userSubscription
+        ? plans.find((p) => p._id === userSubscription.plan)
+        : undefined;
 
     return (
         <SafeAreaView style={styles.safeArea} edges={["bottom"]}>
@@ -553,13 +791,25 @@ const SubscriptionScreen = ({ navigation }: any) => {
                     contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 32 }]}
                     showsVerticalScrollIndicator={false}
                 >
+                    {/* Active Subscription Banner */}
+                    {userSubscription && (
+                        <ActiveSubscriptionBanner
+                            subscription={userSubscription}
+                            plan={activePlan}
+                        />
+                    )}
+
                     <View style={styles.hero}>
                         <View style={styles.heroIconWrap}>
                             <Ionicons name="ribbon-outline" size={32} color={colors.primary} />
                         </View>
-                        <Text style={styles.heroTitle}>Choose Your Plan</Text>
+                        <Text style={styles.heroTitle}>
+                            {userSubscription ? "Manage Your Plan" : "Choose Your Plan"}
+                        </Text>
                         <Text style={styles.heroSubtitle}>
-                            Unlock powerful tools to grow your vendor business
+                            {userSubscription
+                                ? "View your current plan or explore other options"
+                                : "Unlock powerful tools to grow your vendor business"}
                         </Text>
                     </View>
 
@@ -569,6 +819,10 @@ const SubscriptionScreen = ({ navigation }: any) => {
                             plan={plan}
                             index={idx}
                             onSubscribePress={(p) => setSelectedPlan(p)}
+                            isCurrentPlan={
+                                userSubscription?.isActive === true &&
+                                userSubscription?.plan === plan._id
+                            }
                         />
                     ))}
 
@@ -596,6 +850,190 @@ const SubscriptionScreen = ({ navigation }: any) => {
 };
 
 export default SubscriptionScreen;
+
+// ─── Banner Styles ────────────────────────────────────────────────────────────
+
+const bannerStyles = StyleSheet.create({
+    wrapper: {
+        marginBottom: 20,
+        borderRadius: 20,
+        padding: 18,
+        backgroundColor: colors.primary,
+        overflow: "hidden",
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.35,
+        shadowRadius: 18,
+        elevation: 10,
+    },
+    bgLayer1: {
+        position: "absolute",
+        top: -30,
+        right: -30,
+        width: 120,
+        height: 120,
+        borderRadius: 60,
+        backgroundColor: "rgba(255,255,255,0.08)",
+    },
+    bgLayer2: {
+        position: "absolute",
+        bottom: -40,
+        left: -20,
+        width: 150,
+        height: 150,
+        borderRadius: 75,
+        backgroundColor: "rgba(255,255,255,0.05)",
+    },
+    topRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginBottom: 14,
+        gap: 8,
+    },
+    activeDotWrap: {
+        width: 14,
+        height: 14,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    activeDotPulse: {
+        position: "absolute",
+        width: 14,
+        height: 14,
+        borderRadius: 7,
+        backgroundColor: "rgba(74, 222, 128, 0.35)",
+    },
+    activeDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: "#4ADE80",
+    },
+    activeLabel: {
+        flex: 1,
+        fontSize: 11,
+        fontWeight: "800",
+        letterSpacing: 1.5,
+        color: "rgba(255,255,255,0.8)",
+        fontFamily: "Roboto",
+    },
+    autoRenewBadge: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "rgba(255,255,255,0.15)",
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 20,
+    },
+    autoRenewText: {
+        fontSize: 10,
+        color: "#fff",
+        fontWeight: "600",
+        fontFamily: "Roboto",
+    },
+    mainRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginBottom: 14,
+    },
+    planName: {
+        fontSize: 20,
+        fontWeight: "800",
+        color: "#fff",
+        fontFamily: "Roboto",
+        letterSpacing: 0.2,
+    },
+    billingCycle: {
+        fontSize: 12,
+        color: "rgba(255,255,255,0.65)",
+        fontFamily: "Roboto",
+        marginTop: 3,
+    },
+    priceWrap: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        backgroundColor: "rgba(255,255,255,0.15)",
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 12,
+    },
+    priceSymbol: {
+        fontSize: 14,
+        fontWeight: "700",
+        color: "#fff",
+        marginTop: 4,
+        fontFamily: "Roboto",
+    },
+    priceAmount: {
+        fontSize: 28,
+        fontWeight: "800",
+        color: "#fff",
+        fontFamily: "Roboto",
+        lineHeight: 32,
+    },
+    pricePeriod: {
+        fontSize: 11,
+        color: "rgba(255,255,255,0.7)",
+        fontFamily: "Roboto",
+        alignSelf: "flex-end",
+        marginBottom: 3,
+        marginLeft: 2,
+    },
+    divider: {
+        height: 1,
+        backgroundColor: "rgba(255,255,255,0.15)",
+        marginBottom: 14,
+    },
+    datesRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginBottom: 14,
+    },
+    dateItem: {
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+    },
+    dateSep: {
+        width: 1,
+        height: 30,
+        backgroundColor: "rgba(255,255,255,0.2)",
+        marginHorizontal: 8,
+    },
+    dateLabel: {
+        fontSize: 10,
+        color: "rgba(255,255,255,0.6)",
+        fontFamily: "Roboto",
+        marginBottom: 2,
+    },
+    dateValue: {
+        fontSize: 12,
+        fontWeight: "700",
+        color: "#fff",
+        fontFamily: "Roboto",
+    },
+    chipRow: {
+        flexDirection: "row",
+        gap: 8,
+        flexWrap: "wrap",
+    },
+    chip: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#fff",
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 20,
+    },
+    chipText: {
+        fontSize: 11,
+        fontWeight: "600",
+        color: colors.primary,
+        fontFamily: "Roboto",
+    },
+});
+
+// ─── Sheet Styles ─────────────────────────────────────────────────────────────
 
 const sheetStyles = StyleSheet.create({
     backdrop: {
@@ -674,11 +1112,6 @@ const sheetStyles = StyleSheet.create({
         color: colors.primary,
         fontFamily: "Roboto",
     },
-    planPillCycle: {
-        fontSize: 11,
-        fontWeight: "400",
-        color: colors.primary,
-    },
     sectionLabel: {
         fontSize: 11.5,
         fontWeight: "700",
@@ -715,41 +1148,6 @@ const sheetStyles = StyleSheet.create({
         fontWeight: "600",
         color: colors.secondary,
         fontFamily: "Roboto",
-    },
-    methodMeta: {
-        fontSize: 11.5,
-        color: colors.placeholder,
-        fontFamily: "Roboto",
-        marginTop: 2,
-    },
-    chargeBadge: {
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-        borderRadius: 6,
-        marginRight: 10,
-    },
-    chargeBadgeText: {
-        fontSize: 11.5,
-        fontWeight: "700",
-        fontFamily: "Roboto",
-    },
-    radio: {
-        width: 20,
-        height: 20,
-        borderRadius: 10,
-        borderWidth: 2,
-        borderColor: "#CBD5E1",
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    radioSelected: {
-        borderColor: colors.primary,
-    },
-    radioDot: {
-        width: 10,
-        height: 10,
-        borderRadius: 5,
-        backgroundColor: colors.primary,
     },
     breakdown: {
         backgroundColor: "#F8FAFC",
@@ -817,6 +1215,8 @@ const sheetStyles = StyleSheet.create({
     },
 });
 
+// ─── Screen Styles ────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: colors.scaffoldBg },
     scroll: { padding: 16 },
@@ -851,6 +1251,8 @@ const styles = StyleSheet.create({
     featureText: { fontSize: 13, color: colors.secondary, fontFamily: "Roboto", flex: 1, lineHeight: 19 },
     subscribeBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginHorizontal: 16, marginBottom: 16, paddingVertical: 14, borderRadius: 12 },
     subscribeBtnText: { color: "#fff", fontSize: 15, fontWeight: "700", fontFamily: "Roboto", letterSpacing: 0.2 },
+    activePlanBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginHorizontal: 16, marginBottom: 16, paddingVertical: 13, borderRadius: 12, borderWidth: 2, backgroundColor: "#F0FDF4" },
+    activePlanBtnText: { fontSize: 15, fontWeight: "700", fontFamily: "Roboto" },
     footerNote: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: 4, paddingBottom: 8 },
     footerNoteText: { fontSize: 12, color: colors.placeholder, fontFamily: "Roboto" },
 });

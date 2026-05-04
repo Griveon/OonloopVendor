@@ -5,22 +5,23 @@ import {
     Text,
     TouchableOpacity,
     StyleSheet,
-    Dimensions,
-    Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "react-native-vector-icons/Ionicons";
+import { useNavigation } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { colors } from "../../constants/AppThem";
+import { RootStackParamList } from "../../constants/appNavigations";
 
-const { width } = Dimensions.get("window");
-
-// ─── Tab config ───────────────────────────────────────────────────────────────
+type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 type Tab = {
     key: string;
     label: string;
     icon: string;
     iconActive: string;
+    disabled?: boolean;
+    screen: keyof RootStackParamList;
 };
 
 const TABS: Tab[] = [
@@ -29,38 +30,47 @@ const TABS: Tab[] = [
         label: "Home",
         icon: "home-outline",
         iconActive: "home",
+        screen: "Dashboard",
     },
     {
         key: "Orders",
         label: "Orders",
         icon: "receipt-outline",
         iconActive: "receipt",
+        disabled: true,
+        screen: "VendorCouponListing", // swap when Orders screen is ready
     },
     {
         key: "Products",
         label: "Products",
         icon: "cube-outline",
         iconActive: "cube",
+        screen: "ProductListing",
     },
     {
         key: "Profile",
         label: "Profile",
         icon: "person-outline",
         iconActive: "person",
+        screen: "VendorProfile",
     },
 ];
-
-// ─── Props ────────────────────────────────────────────────────────────────────
 
 interface BottomNavBarProps {
     activeTab: string;
     onTabPress: (key: string) => void;
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
 const BottomNavBar = ({ activeTab, onTabPress }: BottomNavBarProps) => {
     const insets = useSafeAreaInsets();
+    const navigation = useNavigation<NavProp>();
+
+    const handlePress = (tab: Tab) => {
+        if (tab.disabled) return; // ✅ block press
+
+        onTabPress(tab.key);
+        navigation.navigate(tab.screen);
+    };
 
     return (
         <View
@@ -69,33 +79,28 @@ const BottomNavBar = ({ activeTab, onTabPress }: BottomNavBarProps) => {
                 { paddingBottom: insets.bottom > 0 ? insets.bottom : 10 },
             ]}
         >
-            {/* Top accent line */}
             <View style={styles.topBorder} />
-
             <View style={styles.row}>
                 {TABS.map((tab) => {
                     const isActive = activeTab === tab.key;
                     return (
                         <TouchableOpacity
                             key={tab.key}
-                            style={styles.tab}
-                            onPress={() => onTabPress(tab.key)}
+                            style={[
+                                styles.tab,
+                                tab.disabled && { opacity: 0.4 } 
+                            ]}
+                            onPress={() => handlePress(tab)}
                             activeOpacity={0.7}
+                            disabled={tab.disabled} // ✅ RN built-in disable
                         >
-                            {/* Active pill background */}
                             {isActive && <View style={styles.activePill} />}
-
                             <Ionicons
                                 name={isActive ? tab.iconActive : tab.icon}
                                 size={22}
                                 color={isActive ? colors.primary : "#94A3B8"}
                             />
-                            <Text
-                                style={[
-                                    styles.label,
-                                    isActive && styles.labelActive,
-                                ]}
-                            >
+                            <Text style={[styles.label, isActive && styles.labelActive]}>
                                 {tab.label}
                             </Text>
                         </TouchableOpacity>
@@ -107,8 +112,6 @@ const BottomNavBar = ({ activeTab, onTabPress }: BottomNavBarProps) => {
 };
 
 export default BottomNavBar;
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
     container: {

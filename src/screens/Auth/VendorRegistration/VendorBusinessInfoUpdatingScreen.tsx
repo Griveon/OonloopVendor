@@ -22,7 +22,8 @@ import { localStyles } from "./VendorRegistrationStyle";
 import FloatingInput from "../../../components/inputs/FloatingInput";
 import TimePickerField from "../../../components/TimePicker/TimePicker";
 import GoogleAddressPicker, { AddressResult } from "../../../components/LocationPicker/LocationPicker";
-import { getUserData } from "../../../components/AsyncStorage/AsyncStorage";
+import { getUserData, storeUserData } from "../../../components/AsyncStorage/AsyncStorage";
+import { showError } from "../../../components/utils/Toaster";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -386,7 +387,8 @@ const VendorBusinessInfoUpdatingScreen = ({ navigation }: any) => {
 
         const addr = form.storeLocationAddress;
         const { user, token } = await getUserData();
-
+        console.log(user)
+        console.log("user")
         const payload = {
             user: user?.user?._id,
             storeName: form.storeName,
@@ -427,20 +429,40 @@ const VendorBusinessInfoUpdatingScreen = ({ navigation }: any) => {
             setLoading(false);
 
             if (res?.success) {
-                // Toast.show({
-                //     type: "success",
-                //     text1: "Success",
-                //     text2: "Business info saved!",
-                // });
-                // navigation.navigate("VendorDashboardScreen");
+                const user = res?.data;
+                const token = res?.data?.token;
+
+                await storeUserData(user, token);
+
+                Toast.show({
+                    type: "success",
+                    text1: "Success",
+                    text2: "Logged In successful!",
+                });
+
+                navigation.navigate("Dashboard");
             }
-        } catch {
+
+        } catch (error: any) {
             setLoading(false);
+
+            console.log("API Error:", error);
+
+            const errMsg =
+                error?.response?.data?.message || 
+                error?.response?.data ||            // fallback
+                error?.message ||                   // axios/general error
+                "Something went wrong";
+
+            // 🔥 Show toast
             // Toast.show({
             //     type: "error",
             //     text1: "Error",
-            //     text2: "Something went wrong. Please try again.",
+            //     text2: errMsg,
             // });
+
+            // // 🔥 Optional helper (if you already have this function)
+            showError(error?.response?.data || error);
         }
     };
     return (

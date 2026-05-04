@@ -21,6 +21,7 @@ import { API_ENDPOINTS } from '../../constants/ApiEndpoints';
 import { colors, appTheme, localStyles } from '../../constants/AppThem';
 import { Fonts } from '../../constants/Fonts';
 import AppBar from '../../components/utils/AppBar';
+import { getUserData } from '../../components/AsyncStorage/AsyncStorage';
 
 // --- Helper: Debounce hook ---
 function useDebounce<T>(value: T, delay: number): T {
@@ -146,6 +147,8 @@ const CouponDetailsSheet = ({
     onClose: () => void;
 }) => {
     const translateY = useState(new Animated.Value(500))[0];
+
+
 
     useEffect(() => {
         if (visible) {
@@ -281,40 +284,65 @@ const CouponListingScreen = ({ navigation }: any) => {
     const [selectedCoupon, setSelectedCoupon] = useState<Coupon | null>(null);
 
     const debouncedSearch = useDebounce(searchText, 500);
-
+    const [vendor, setVendor] = useState<any | null>(null);
+    // 1. Handle search debounce
     useEffect(() => {
-        setSearchTerm(debouncedSearch);
         setPage(1);
+        setSearchTerm(debouncedSearch);
     }, [debouncedSearch]);
 
+    useFocusEffect(
+        useCallback(() => {
+            if (vendor?._id) {
+                setPage(1);
+                fetchCoupons();
+            }
+        }, [vendor?._id])
+    );
+    // 2. Handle active filter
     useEffect(() => {
         setPage(1);
     }, [activeOnly]);
 
+    // 3. Fetch vendor ONCE
     useEffect(() => {
-        fetchCoupons();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [page, searchTerm, activeOnly]);
+        const init = async () => {
+            const { user } = await getUserData();
+            if (user?.user?._id) {
+                fetchVendorProfile(user.user._id);
+            }
+        };
+        init();
+    }, []);
 
-    useFocusEffect(
-        useCallback(() => {
-            setPage(1);
+    // 4. Fetch coupons when dependencies change
+    useEffect(() => {
+        if (vendor?._id) {
             fetchCoupons();
-            // eslint-disable-next-line react-hooks/exhaustive-deps
-        }, [])
-    );
+        }
+    }, [page, searchTerm, activeOnly, vendor?._id]);
+
+    // 5. Vendor API
+    const fetchVendorProfile = async (userId: string) => {
+        try {
+            const res: any = await getRequest(
+                `${API_ENDPOINTS.VENDORPROFILEGET}/${userId}`
+            );
+
+            if (res?.success && res?.data?.vendor) {
+                setVendor(res.data.vendor);
+            }
+        } catch (err: any) {
+            console.log("Vendor fetch error:", err?.message);
+        }
+    };
 
     const fetchCoupons = async () => {
         if (loading && !refreshing) return;
         setLoading(true);
         setError(null);
         try {
-            const response = await getRequest(API_ENDPOINTS.VENDORCOUPONSGETALL, {
-                page,
-                limit: 10,
-                search: searchTerm || undefined,
-                isActive: activeOnly ? true : undefined,
-            });
+            const response = await getRequest(`${API_ENDPOINTS.VENDORCOUPONSGETALL}?vendorId=${vendor._id}`);
 
             if (response?.success && response?.data) {
                 const newCoupons: Coupon[] = response.data;

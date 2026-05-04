@@ -1,5 +1,5 @@
 // screens/VendorRegistrationScreen.tsx
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
     View,
     ScrollView,
@@ -24,7 +24,7 @@ import { localStyles } from "./VendorRegistrationStyle";
 import GenderPicker from "../../../components/DropDowns/GenderDropDown";
 import Toast from "react-native-toast-message";
 import { API_ENDPOINTS } from "../../../constants/ApiEndpoints";
-import { storeUserData } from "../../../components/AsyncStorage/AsyncStorage";
+import { clearUserData, storeUserData } from "../../../components/AsyncStorage/AsyncStorage";
 
 const PIN_LENGTH = 6;
 
@@ -159,7 +159,9 @@ const FloatingInput = ({
 }: any) => {
     const [focused, setFocused] = useState(false);
     const [hidden, setHidden] = useState(secureTextEntry);
-
+    // useEffect(() => {
+    //     clearUserData();
+    // },);
     const inputContent = (
         <View style={{ position: "relative", justifyContent: "center" }}>
             <TextInput
@@ -364,7 +366,7 @@ const VendorRegistrationScreen = ({ navigation }: any) => {
             if (res?.success) {
                 const user = res?.data;
                 const token = res?.data?.token;
-                
+
                 await storeUserData(user, token);
 
                 Toast.show({
@@ -377,6 +379,7 @@ const VendorRegistrationScreen = ({ navigation }: any) => {
 
             }
         } catch (error) {
+            
             setLoading(false);
             // showError(error);
         }

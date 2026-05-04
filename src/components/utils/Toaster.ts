@@ -9,8 +9,10 @@ export const showError = (error: ApiError | any) => {
     if (!error) return;
 
     if (error.error && Array.isArray(error.error)) {
-        error.error.forEach((err: any) => {
-            const msg = `${err.path.join(".")}: ${err.message}`;
+        error?.error?.forEach((err: any) => {
+            console.log("error.error")
+            const msg = `${err?.message}`;
+            console.log(msg)
             Toast.show({
                 type: 'error',
                 text1: 'Validation Error',

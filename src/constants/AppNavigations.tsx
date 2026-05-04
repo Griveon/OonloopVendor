@@ -23,6 +23,7 @@ import VendorKycScreen from "../screens/KYC/VendorKycScreen";
 import ForgotPinScreen from "../screens/Auth/ForgotPin/ForgotPinScreen";
 import ProductListingScreen from "../screens/Product/ProductListingScreen";
 import VendorAddProductScreen from "../screens/Product/AddProductScreen";
+import VendorEditProductScreen from "../screens/Product/EditProductScreen";
 // import DashboardScreen from "../screens/Dashboard/DashboardScreen"; // Uncomment when ready
 
 export type RootStackParamList = {
@@ -46,6 +47,7 @@ export type RootStackParamList = {
     ForgotPin: undefined;
     ProductListing: undefined;
     AddProduct: undefined;
+    EditProduct: undefined;
     
 };
 
@@ -79,6 +81,7 @@ const AppNavigator = forwardRef<NavigationContainerRef<RootStackParamList>>((pro
                 <Stack.Screen name="VendorProfile" component={VendorProfileScreen} />
                 <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
                 <Stack.Screen name="TermsAndCondition" component={TermsAndConditionsScreen} />
+                <Stack.Screen name="EditProduct" component={VendorEditProductScreen} />
             </Stack.Navigator>
         </NavigationContainer>
     );

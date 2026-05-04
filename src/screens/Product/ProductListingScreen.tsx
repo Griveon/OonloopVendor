@@ -633,7 +633,7 @@ const ProductListingScreen = ({ navigation }: any) => {
                 </View>
 
                 {/* Filter Chips */}
-                <ScrollView
+                {/* <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     style={styles.filterScroll}
@@ -656,7 +656,7 @@ const ProductListingScreen = ({ navigation }: any) => {
                             </Text>
                         </TouchableOpacity>
                     ))}
-                </ScrollView>
+                </ScrollView> */}
 
                 {renderError()}
 

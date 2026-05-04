@@ -17,6 +17,7 @@ import { appTheme, colors, inputStyles } from "../../../constants/AppThem";
 import Toast from "react-native-toast-message";
 import { loginStyles, pinloginStyles } from "../Login/LoginScreenStyle";
 import { API_ENDPOINTS } from "../../../constants/ApiEndpoints";
+import { storeUserData } from "../../../components/AsyncStorage/AsyncStorage";
 
 const PIN_LENGTH = 6;
 const OTP_LENGTH = 6;
@@ -239,7 +240,18 @@ const ForgotPinScreen = ({ navigation }: any) => {
             });
             setLoading(false);
             if (res?.success) {
+                const user = res?.data;
+                const token = res?.data?.token;
+
+                await storeUserData(user, token);
+
+                Toast.show({
+                    type: "success",
+                    text1: "Success",
+                    text2: "Logged In successful!",
+                });
                 Toast.show({ type: "success", text1: "PIN Reset!", text2: "Please log in with your new PIN." });
+
                 navigation.navigate("Dashboard");
             } else {
                 ToastAndroid.show(res?.message ?? "Failed to reset PIN.", ToastAndroid.LONG);

@@ -125,7 +125,7 @@ const LoginScreen = ({ navigation }: any) => {
             console.log("Stored Token:", token);
 
             if (user && token) {
-                ToastAndroid.show("User already logged in", ToastAndroid.SHORT);
+                // ToastAndroid.show("User already logged in", ToastAndroid.SHORT);
 
                 // For debug (optional navigation)
                 // navigation.navigate("Dashboard");

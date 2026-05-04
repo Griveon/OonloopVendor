@@ -18,13 +18,14 @@ import {
     TouchableWithoutFeedback,
     View,
 } from "react-native";
-import Geolocation from "@react-native-community/geolocation";
+import Geolocation from 'react-native-geolocation-service';
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { placesService, Prediction } from "./PlacesService";
-
+import MapView, { PROVIDER_GOOGLE } from "react-native-maps";
 const GOOGLE_MAPS_API_KEY = "AIzaSyD06rgmMtvcUfRMvFNvXlnn0rwpGUUzzAc";
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.82;
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export interface AddressResult {
     addressLine1: string;
@@ -143,9 +144,17 @@ interface SheetProps {
 }
 
 const LocationBottomSheet: React.FC<SheetProps> = ({ visible, onClose, onSelect }) => {
+    const insets = useSafeAreaInsets();
+    const isInitialRegionSet = useRef(true);
     const slideAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
-    const backdropAnim = useRef(new Animated.Value(0)).current;
 
+    const backdropAnim = useRef(new Animated.Value(0)).current;
+    const [region, setRegion] = useState({
+        latitude: 19.0760,   // default Mumbai
+        longitude: 72.8777,
+        latitudeDelta: 0.015,
+        longitudeDelta: 0.0121,
+    });
     const [query, setQuery] = useState("");
     const [suggestions, setSuggestions] = useState<Prediction[]>([]);
     const [isFetching, setIsFetching] = useState(false);
@@ -207,11 +216,7 @@ const LocationBottomSheet: React.FC<SheetProps> = ({ visible, onClose, onSelect 
     // ── Auto-trigger on open (after animation settles) ────────────────────
     useEffect(() => {
         if (!visible) return;
-        const timer = setTimeout(() => {
-            if (isMountedRef.current) detectLocation();
-        }, 400);
-        return () => clearTimeout(timer);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        detectLocation(); // immediate
     }, [visible]);
 
     // ── Detect location ────────────────────────────────────────────────────
@@ -308,6 +313,17 @@ const LocationBottomSheet: React.FC<SheetProps> = ({ visible, onClose, onSelect 
             return;
         }
 
+        if (addr) {
+            const newRegion = {
+                latitude: pos.lat,
+                longitude: pos.lng,
+                latitudeDelta: 0.015,
+                longitudeDelta: 0.0121,
+            };
+
+            setRegion(newRegion);
+        }
+
         const result: AddressResult = {
             addressLine1: addr.addressLine1 || "",
             addressLine2: addr.addressLine2 || "",
@@ -371,6 +387,15 @@ const LocationBottomSheet: React.FC<SheetProps> = ({ visible, onClose, onSelect 
         setIsFetching(false);
 
         if (details) {
+            const newRegion = {
+                latitude: details.lat,
+                longitude: details.lng,
+                latitudeDelta: 0.015,
+                longitudeDelta: 0.0121,
+            };
+
+            setRegion(newRegion);
+
             onSelect({
                 addressLine1: details.addressLine1 || prediction.description,
                 addressLine2: details.addressLine2 || "",
@@ -424,7 +449,7 @@ const LocationBottomSheet: React.FC<SheetProps> = ({ visible, onClose, onSelect 
                 <Animated.View style={[ss.backdrop, { opacity: backdropAnim }]} />
             </TouchableWithoutFeedback>
 
-            <Animated.View style={[ss.sheet, { transform: [{ translateY: slideAnim }] }]}>
+            <Animated.View style={[ss.sheet, { transform: [{ translateY: slideAnim }], paddingBottom: insets.bottom, }]}>
                 <View style={ss.handle} />
 
                 <View style={ss.header}>
@@ -483,92 +508,78 @@ const LocationBottomSheet: React.FC<SheetProps> = ({ visible, onClose, onSelect 
                                     <View style={ss.rowIcon}>
                                         <Ionicons name="location-outline" size={16} color="#2563EB" />
                                     </View>
-                                    <Text style={ss.rowText} numberOfLines={2}>{item.description}</Text>
+                                    <Text style={ss.rowText} numberOfLines={2}>
+                                        {item.description}
+                                    </Text>
                                 </TouchableOpacity>
                             )}
                         />
                     ) : (
-                        <View style={ss.body}>
+                        <View style={{ flex: 1 }}>
 
-                            {/* ── GPS Card ── */}
-                            <TouchableOpacity
-                                style={[
-                                    ss.gpsCard,
-                                    locationStatus === "success" && ss.gpsCardSuccess,
-                                    locationStatus === "error" && ss.gpsCardError,
-                                ]}
-                                onPress={handleCardPress}
-                                disabled={locationStatus === "locating"}
-                                activeOpacity={0.8}
-                            >
-                                {/* Icon box */}
-                                <View style={[
-                                    ss.gpsIconBox,
-                                    locationStatus === "success" && ss.gpsIconBoxSuccess,
-                                    locationStatus === "error" && ss.gpsIconBoxError,
-                                ]}>
-                                    {locationStatus === "locating" && (
-                                        <ActivityIndicator size="small" color="#2563EB" />
-                                    )}
-                                    {locationStatus === "success" && (
-                                        <Ionicons name="checkmark-circle" size={22} color="#16A34A" />
-                                    )}
-                                    {locationStatus === "error" && !permBlocked && (
-                                        <Ionicons name="reload-outline" size={20} color="#DC2626" />
-                                    )}
-                                    {locationStatus === "error" && permBlocked && (
-                                        <Ionicons name="settings-outline" size={20} color="#DC2626" />
-                                    )}
-                                    {locationStatus === "idle" && (
-                                        <Ionicons name="navigate" size={20} color="#2563EB" />
-                                    )}
-                                </View>
+                            {/* 🗺️ MAP */}
+                            <MapView
+                                provider={PROVIDER_GOOGLE}
+                                style={{ flex: 1 }}
+                                region={region}
+                                showsUserLocation
+                                onRegionChange={() => {
+                                    if (!isInitialRegionSet.current) {
+                                        setLocationStatus("locating");
+                                    }
+                                }}
+                                onRegionChangeComplete={(reg) => {
+                                    // ❌ Skip first auto-trigger
+                                    if (isInitialRegionSet.current) {
+                                        isInitialRegionSet.current = false;
+                                        return;
+                                    }
 
-                                {/* Text */}
-                                <View style={{ flex: 1 }}>
-                                    <Text
-                                        style={[
-                                            ss.gpsTitle,
-                                            locationStatus === "success" && { color: "#15803D" },
-                                            locationStatus === "error" && { color: "#DC2626" },
-                                        ]}
-                                        numberOfLines={2}
-                                    >
-                                        {cardTitle()}
-                                    </Text>
-                                    {cardSubtitle() ? (
-                                        <Text style={ss.gpsSub} numberOfLines={2}>
-                                            {cardSubtitle()}
-                                        </Text>
-                                    ) : null}
-                                </View>
+                                    setRegion(reg);
 
-                                {locationStatus !== "locating" && (
-                                    <Ionicons
-                                        name={
-                                            locationStatus === "success"
-                                                ? "arrow-forward-circle"
-                                                : permBlocked
-                                                    ? "open-outline"
-                                                    : "chevron-forward"
-                                        }
-                                        size={20}
-                                        color={locationStatus === "success" ? "#16A34A" : "#94A3B8"}
-                                    />
-                                )}
-                            </TouchableOpacity>
+                                    reverseGeocode(reg.latitude, reg.longitude).then((addr) => {
+                                        if (!addr) return;
 
-                            <View style={ss.divRow}>
-                                <View style={ss.divLine} />
-                                <Text style={ss.divText}>or type to search</Text>
-                                <View style={ss.divLine} />
+                                        const result: AddressResult = {
+                                            addressLine1: addr.addressLine1 || "",
+                                            addressLine2: addr.addressLine2 || "",
+                                            landmark: "",
+                                            city: addr.city || "",
+                                            state: addr.state || "",
+                                            postalCode: addr.postalCode || "",
+                                            country: addr.country || "India",
+                                            latitude: reg.latitude,
+                                            longitude: reg.longitude,
+                                        };
+
+                                        setDetectedAddr(result);
+                                        setLocationStatus("success");
+                                    });
+                                }}
+                            />
+
+                            {/* 📍 CENTER PIN */}
+                            <View style={mapStyles.markerFixed}>
+                                <Ionicons name="location-sharp" size={36} color="#EF4444" />
                             </View>
 
-                            <View style={ss.hint}>
-                                <Ionicons name="search" size={14} color="#CBD5E1" style={{ marginRight: 8 }} />
-                                <Text style={ss.hintText}>
-                                    Enter area, street name, or landmark above
+                            {/* 📦 BOTTOM CONFIRM CARD */}
+                            <View style={mapStyles.bottomCard}>
+                                <Text style={mapStyles.addressText} numberOfLines={2}>
+                                    {detectedAddr
+                                        ? `${detectedAddr.addressLine1}, ${detectedAddr.city}`
+                                        : "Move map to select location"}
                                 </Text>
+
+                                <TouchableOpacity
+                                    style={mapStyles.confirmBtn}
+                                    onPress={confirmLocation}
+                                    disabled={!detectedAddr}
+                                >
+                                    <Text style={{ color: "#fff", fontWeight: "600" }}>
+                                        Confirm Location
+                                    </Text>
+                                </TouchableOpacity>
                             </View>
                         </View>
                     )}
@@ -688,6 +699,39 @@ const ss = StyleSheet.create({
     divText: { marginHorizontal: 12, fontSize: 12, color: "#94A3B8", fontWeight: "500" },
     hint: { flexDirection: "row", alignItems: "center", backgroundColor: "#F8FAFC", borderRadius: 10, padding: 14 },
     hintText: { flex: 1, fontSize: 13, color: "#94A3B8", lineHeight: 19 },
+
+});
+
+const mapStyles = StyleSheet.create({
+    markerFixed: {
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        marginLeft: -18,
+        marginTop: -36,
+    },
+    bottomCard: {
+        position: "absolute",
+        bottom: 20,
+        left: 16,
+        right: 16,
+        backgroundColor: "#fff",
+        padding: 16,
+        borderRadius: 14,
+        elevation: 6,
+    },
+    addressText: {
+        fontSize: 14,
+        color: "#1E293B",
+        fontWeight: "500",
+    },
+    confirmBtn: {
+        marginTop: 12,
+        backgroundColor: "#2563EB",
+        paddingVertical: 12,
+        borderRadius: 10,
+        alignItems: "center",
+    },
 });
 
 export default GoogleAddressPicker;

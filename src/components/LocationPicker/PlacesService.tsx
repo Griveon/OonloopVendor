@@ -126,6 +126,74 @@ class PlacesService {
 
         return null;
     }
+
+    async fetchAddressFromLatLng(
+        lat: number,
+        lng: number
+    ): Promise<PlaceDetails | null> {
+        const url =
+            `https://maps.googleapis.com/maps/api/geocode/json` +
+            `?latlng=${lat},${lng}` +
+            `&key=${GOOGLE_MAPS_API_KEY}`;
+
+        try {
+            const response = await fetch(url);
+            const json = await response.json();
+            console.log(json)
+
+            if (json.status === "OK" && json.results.length > 0) {
+                const result = json.results[0];
+                const components: any[] = result.address_components || [];
+
+                let streetNumber = "";
+                let route = "";
+                let sublocality = "";
+                let city = "";
+                let state = "";
+                let postalCode = "";
+                let country = "";
+
+                for (const c of components) {
+                    const types: string[] = c.types || [];
+
+                    if (types.includes("street_number")) streetNumber = c.long_name;
+                    if (types.includes("route")) route = c.long_name;
+                    if (
+                        types.includes("sublocality_level_1") ||
+                        types.includes("sublocality")
+                    )
+                        sublocality = c.long_name;
+                    if (types.includes("locality")) city = c.long_name;
+                    if (types.includes("administrative_area_level_1"))
+                        state = c.long_name;
+                    if (types.includes("postal_code")) postalCode = c.long_name;
+                    if (types.includes("country")) country = c.long_name;
+                }
+
+                const addressLine1 = [streetNumber, route].filter(Boolean).join(" ");
+                const addressLine2 = sublocality;
+
+                const location = result.geometry?.location;
+
+                return {
+                    formattedAddress: result.formatted_address || "",
+                    addressLine1,
+                    addressLine2,
+                    landmark: "",
+                    city,
+                    state,
+                    postalCode,
+                    country,
+                    lat: location?.lat ?? lat,
+                    lng: location?.lng ?? lng,
+                };
+            }
+        } catch (e) {
+            console.error("Reverse Geocoding Error:", e);
+        }
+
+        return null;
+    }
 }
 
 export const placesService = new PlacesService();

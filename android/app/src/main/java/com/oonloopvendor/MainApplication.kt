@@ -1,4 +1,4 @@
-package com.oonloopvendor
+package com.oonloopvendor.merchant
 
 import android.app.Application
 import com.facebook.react.PackageList

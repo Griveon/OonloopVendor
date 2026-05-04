@@ -1,5 +1,5 @@
 // screens/coupons/EditCouponScreen.tsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
     View,
     ScrollView,
@@ -8,7 +8,12 @@ import {
     ActivityIndicator,
     KeyboardAvoidingView,
     Platform,
+    Switch,
     StyleSheet,
+    Modal,
+    FlatList,
+    TextInput,
+    Dimensions,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "react-native-vector-icons/Ionicons";
@@ -17,7 +22,11 @@ import { getRequest, putRequest } from "../../constants/ApiClient";
 import { API_ENDPOINTS } from "../../constants/ApiEndpoints";
 import { colors } from "../../constants/AppThem";
 import AppBar from "../../components/utils/AppBar";
-import FloatingInput from "../../components/inputs/FloatingInput";  
+import FloatingInput from "../../components/inputs/FloatingInput";
+
+const { height } = Dimensions.get("window");
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type FormState = {
     discountType: string;
@@ -25,7 +34,53 @@ type FormState = {
     minOrderValue: string;
     couponCode: string;
     description: string;
+    isActive: boolean;
 };
+
+// ─── Coupon Types (same as Add) ───────────────────────────────────────────────
+
+export const COUPON_TYPES = [
+    { label: "Flat Discount", value: "FLAT_DISCOUNT", code: "FLAT" },
+    { label: "Percentage Offer", value: "PERCENTAGE", code: "SAVE" },
+    { label: "Special Offer", value: "SPECIAL", code: "SPECIAL" },
+    { label: "Limited Time Deal", value: "LIMITED_TIME", code: "LIMIT" },
+    { label: "Exclusive Deal", value: "EXCLUSIVE", code: "EXCL" },
+    { label: "Summer Sale", value: "SUMMER", code: "SUMMER" },
+    { label: "Winter Sale", value: "WINTER", code: "WINTER" },
+    { label: "Festival Offer", value: "FESTIVAL", code: "FEST" },
+    { label: "Diwali Offer", value: "DIWALI", code: "DIWALI" },
+    { label: "Pongal Offer", value: "PONGAL", code: "PONGAL" },
+    { label: "Christmas Sale", value: "CHRISTMAS", code: "XMAS" },
+    { label: "New Year Sale", value: "NEW_YEAR", code: "NY" },
+    { label: "Independence Day Offer", value: "INDEPENDENCE", code: "IND" },
+    { label: "Republic Day Offer", value: "REPUBLIC", code: "REP" },
+    { label: "Weekend Sale", value: "WEEKEND", code: "WKND" },
+    { label: "Month-End Sale", value: "MONTH_END", code: "MEND" },
+    { label: "Flash Sale", value: "FLASH", code: "FLASH" },
+    { label: "Happy Hours Deal", value: "HAPPY_HOURS", code: "HAPPY" },
+    { label: "Today Only Offer", value: "TODAY_ONLY", code: "TODAY" },
+    { label: "First Order Discount", value: "FIRST_ORDER", code: "FIRST" },
+    { label: "New User Offer", value: "NEW_USER", code: "NEW" },
+    { label: "Loyalty Reward", value: "LOYALTY", code: "LOYAL" },
+    { label: "VIP Exclusive Offer", value: "VIP", code: "VIP" },
+    { label: "Referral Discount", value: "REFERRAL", code: "REFER" },
+    { label: "Minimum Order Discount", value: "MIN_ORDER", code: "MIN" },
+    { label: "Bulk Purchase Offer", value: "BULK", code: "BULK" },
+    { label: "Buy More Save More", value: "BUY_MORE", code: "SAVE" },
+    { label: "Combo Offer", value: "COMBO", code: "COMBO" },
+    { label: "Bundle Deal", value: "BUNDLE", code: "BUNDLE" },
+    { label: "Free Delivery", value: "FREE_DELIVERY", code: "FREEDEL" },
+    { label: "Shipping Discount", value: "SHIPPING", code: "SHIP" },
+    { label: "Platform Sponsored Offer", value: "PLATFORM", code: "PLAT" },
+    { label: "Seller Sponsored Offer", value: "SELLER", code: "SELL" },
+    { label: "Clearance Sale", value: "CLEARANCE", code: "CLEAR" },
+    { label: "Stock Clearance", value: "STOCK_CLEAR", code: "STOCK" },
+    { label: "Last Chance Deal", value: "LAST_CHANCE", code: "LAST" },
+    { label: "Mega Sale", value: "MEGA", code: "MEGA" },
+    { label: "Super Saver Deal", value: "SUPER_SAVER", code: "SAVE" },
+];
+
+// ─── Page Header ──────────────────────────────────────────────────────────────
 
 const PageHeader = () => (
     <View style={headerStyles.container}>
@@ -85,6 +140,8 @@ const headerStyles = StyleSheet.create({
     },
 });
 
+// ─── Discount Type Selector ───────────────────────────────────────────────────
+
 const DISCOUNT_TYPES = [
     { label: "Percentage", value: "PERCENTAGE", icon: "percent-outline" },
     { label: "Fixed Amount", value: "FIXED", icon: "cash-outline" },
@@ -133,19 +190,14 @@ const DiscountTypeSelector = ({
 );
 
 const selectorStyles = StyleSheet.create({
-    wrapper: {
-        marginBottom: 16,
-    },
+    wrapper: { marginBottom: 16 },
     label: {
         fontSize: 14,
         fontWeight: "600",
         color: colors.secondary,
         marginBottom: 10,
     },
-    row: {
-        flexDirection: "row",
-        gap: 12,
-    },
+    row: { flexDirection: "row", gap: 12 },
     option: {
         flex: 1,
         flexDirection: "row",
@@ -167,12 +219,215 @@ const selectorStyles = StyleSheet.create({
         fontWeight: "600",
         color: colors.placeholder,
     },
-    optionTextSelected: {
-        color: "#fff",
+    optionTextSelected: { color: "#fff" },
+});
+
+// ─── Dropdown Picker ──────────────────────────────────────────────────────────
+
+const DropdownPicker = ({
+    label,
+    value,
+    placeholder,
+    options,
+    onSelect,
+    loading,
+}: {
+    label: string;
+    value: string;
+    placeholder: string;
+    options: any[];
+    onSelect: (opt: any) => void;
+    loading?: boolean;
+}) => {
+    const [open, setOpen] = useState(false);
+    const [search, setSearch] = useState("");
+
+    const selected = options.find((o) => o._id === value);
+
+    const filteredOptions = useMemo(() => {
+        if (!search.trim()) return options;
+        return options.filter((o) =>
+            o.name.toLowerCase().includes(search.toLowerCase())
+        );
+    }, [search, options]);
+
+    return (
+        <View style={ddStyles.wrapper}>
+            <Text style={ddStyles.label}>{label}</Text>
+
+            <TouchableOpacity
+                style={ddStyles.trigger}
+                onPress={() => setOpen(true)}
+                activeOpacity={0.8}
+            >
+                {loading ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                    <>
+                        <Text
+                            style={[ddStyles.triggerText, !selected && ddStyles.placeholder]}
+                            numberOfLines={1}
+                        >
+                            {selected ? selected.name : placeholder}
+                        </Text>
+                        <Ionicons name="chevron-down-outline" size={16} color={colors.placeholder} />
+                    </>
+                )}
+            </TouchableOpacity>
+
+            <Modal visible={open} transparent animationType="fade">
+                <TouchableOpacity
+                    style={ddStyles.backdrop}
+                    activeOpacity={1}
+                    onPress={() => setOpen(false)}
+                >
+                    <View style={[ddStyles.sheet, { height: height * 0.75 }]}>
+                        <View style={ddStyles.sheetHeader}>
+                            <Text style={ddStyles.sheetTitle}>{label}</Text>
+                            <TouchableOpacity onPress={() => setOpen(false)}>
+                                <Ionicons name="close-outline" size={22} color={colors.secondary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <View style={ddStyles.searchContainer}>
+                            <Ionicons name="search-outline" size={16} color={colors.placeholder} />
+                            <TextInput
+                                placeholder="Search..."
+                                value={search}
+                                onChangeText={setSearch}
+                                style={ddStyles.searchInput}
+                                placeholderTextColor={colors.placeholder}
+                            />
+                            {search.length > 0 && (
+                                <TouchableOpacity onPress={() => setSearch("")}>
+                                    <Ionicons name="close-circle" size={16} color={colors.placeholder} />
+                                </TouchableOpacity>
+                            )}
+                        </View>
+
+                        <FlatList
+                            data={filteredOptions}
+                            keyExtractor={(item) => item._id}
+                            keyboardShouldPersistTaps="handled"
+                            renderItem={({ item }) => (
+                                <TouchableOpacity
+                                    style={[
+                                        ddStyles.option,
+                                        item._id === value && ddStyles.optionSelected,
+                                    ]}
+                                    onPress={() => {
+                                        onSelect(item);
+                                        setOpen(false);
+                                        setSearch("");
+                                    }}
+                                >
+                                    <Text
+                                        style={[
+                                            ddStyles.optionText,
+                                            item._id === value && ddStyles.optionTextSelected,
+                                        ]}
+                                    >
+                                        {item.name}
+                                    </Text>
+                                    {item._id === value && (
+                                        <Ionicons name="checkmark" size={16} color={colors.primary} />
+                                    )}
+                                </TouchableOpacity>
+                            )}
+                            ListEmptyComponent={
+                                <Text style={ddStyles.empty}>No results found</Text>
+                            }
+                        />
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+        </View>
+    );
+};
+
+const ddStyles = StyleSheet.create({
+    wrapper: { marginBottom: 14 },
+    label: {
+        fontSize: 12,
+        fontWeight: "600",
+        color: colors.secondary,
+        marginBottom: 6,
+        letterSpacing: 0.2,
+    },
+    trigger: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        backgroundColor: colors.formBg,
+        borderWidth: 1.5,
+        borderColor: colors.formBorder,
+        borderRadius: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 13,
+        minHeight: 48,
+    },
+    triggerText: { fontSize: 14, fontWeight: "500", color: colors.secondary, flex: 1 },
+    placeholder: { color: colors.placeholder },
+    backdrop: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.45)",
+        justifyContent: "flex-end",
+    },
+    sheet: {
+        backgroundColor: colors.scaffoldBg,
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        maxHeight: "60%",
+        paddingBottom: 30,
+    },
+    sheetHeader: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.formBorder,
+    },
+    sheetTitle: { fontSize: 16, fontWeight: "700", color: colors.secondary },
+    option: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingHorizontal: 20,
+        paddingVertical: 14,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.formBorder,
+    },
+    optionSelected: { backgroundColor: "#EFF6FF" },
+    optionText: { fontSize: 14, color: colors.secondary },
+    optionTextSelected: { color: colors.primary, fontWeight: "600" },
+    empty: {
+        textAlign: "center",
+        color: colors.placeholder,
+        padding: 24,
+        fontSize: 13,
+    },
+    searchContainer: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#f5f5f5",
+        borderRadius: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        marginBottom: 10,
+        gap: 6,
+        marginHorizontal: 20,
+        marginTop: 12,
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: 14,
+        color: "#000",
     },
 });
 
-// ─── Local Card Styles ───────────────────────────────────────────────────────
+// ─── Local Card Styles ────────────────────────────────────────────────────────
 
 const localStyles = StyleSheet.create({
     card: {
@@ -181,6 +436,35 @@ const localStyles = StyleSheet.create({
         padding: 24,
         marginHorizontal: 20,
         marginBottom: 20,
+    },
+    toggleRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        backgroundColor: colors.formBg,
+        borderRadius: 12,
+        borderWidth: 1.5,
+        borderColor: colors.formBorder,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        marginBottom: 16,
+    },
+    toggleLeft: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        flex: 1,
+    },
+    toggleTextWrapper: { flex: 1 },
+    toggleTitle: {
+        fontSize: 14,
+        fontWeight: "600",
+        color: colors.secondary,
+    },
+    toggleSubtitle: {
+        fontSize: 12,
+        color: colors.placeholder,
+        marginTop: 2,
     },
     sectionLabel: {
         fontSize: 13,
@@ -222,27 +506,23 @@ const EditCouponScreen = ({ navigation, route }: any) => {
 
     const [loading, setLoading] = useState(false);
     const [fetching, setFetching] = useState(true);
+    const [selectedType, setSelectedType] = useState<string>("");  // ← NEW
     const [form, setForm] = useState<FormState>({
         discountType: "PERCENTAGE",
         discountValue: "",
         minOrderValue: "",
         couponCode: "",
         description: "",
+        isActive: true,
     });
 
-    // Fetch coupon details on mount
     useEffect(() => {
         fetchCouponDetails();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [couponId]);
 
     const fetchCouponDetails = async () => {
         if (!couponId) {
-            Toast.show({
-                type: "error",
-                text1: "Error",
-                text2: "Coupon ID not provided",
-            });
+            Toast.show({ type: "error", text1: "Error", text2: "Coupon ID not provided" });
             navigation.goBack();
             return;
         }
@@ -255,38 +535,48 @@ const EditCouponScreen = ({ navigation, route }: any) => {
 
             if (res?.success && res?.data) {
                 const coupon = res.data;
+
+                // ── Restore selectedType from saved couponCode ──────────────
+                // Try to match the saved couponCode prefix back to a COUPON_TYPE
+                const matchedType = COUPON_TYPES.find((t) =>
+                    coupon.couponCode?.startsWith(t.code)
+                );
+                if (matchedType) setSelectedType(matchedType.value);
+                // ────────────────────────────────────────────────────────────
+
                 setForm({
                     discountType: coupon.discountType || "PERCENTAGE",
                     discountValue: String(coupon.discountValue ?? ""),
                     minOrderValue: String(coupon.minOrderValue ?? ""),
                     couponCode: coupon.couponCode || "",
                     description: coupon.description || "",
+                    isActive: coupon.isActive ?? true,
                 });
             } else {
-                Toast.show({
-                    type: "error",
-                    text1: "Error",
-                    text2: res?.message || "Failed to load coupon details",
-                });
+                Toast.show({ type: "error", text1: "Error", text2: res?.message || "Failed to load coupon details" });
             }
         } catch (err: any) {
-            Toast.show({
-                type: "error",
-                text1: "Error",
-                text2: err?.message || "Something went wrong",
-            });
+            Toast.show({ type: "error", text1: "Error", text2: err?.message || "Something went wrong" });
         } finally {
             setFetching(false);
         }
     };
 
-    const handleChange = (field: keyof FormState, value: string) => {
+    const handleChange = (field: keyof FormState, value: string | boolean) => {
         setForm((prev) => ({ ...prev, [field]: value }));
     };
 
-    // Auto-uppercase coupon code & strip spaces
-    const handleCouponCodeChange = (value: string) => {
-        handleChange("couponCode", value.toUpperCase().replace(/\s/g, ""));
+    const generateCouponCode = (type: string, discountValue: string) => {
+        const selected = COUPON_TYPES.find((t) => t.value === type);
+        if (!selected) return "";
+        return `${selected.code}${discountValue || ""}`.toUpperCase();
+    };
+
+    // ── Re-generates coupon code when type changes (same as Add) ──
+    const handleCouponTypeChange = (type: string) => {
+        setSelectedType(type);
+        const code = generateCouponCode(type, form.discountValue);
+        setForm((prev) => ({ ...prev, couponCode: code }));
     };
 
     const validateForm = (): boolean => {
@@ -306,12 +596,8 @@ const EditCouponScreen = ({ navigation, route }: any) => {
             Toast.show({ type: "error", text1: "Validation Error", text2: "Enter a valid minimum order value" });
             return false;
         }
-        // if (!form.couponCode.trim()) {
-        //     Toast.show({ type: "error", text1: "Validation Error", text2: "Coupon code is required" });
-        //     return false;
-        // }
-        if (!form.description.trim()) {
-            Toast.show({ type: "error", text1: "Validation Error", text2: "Description is required" });
+        if (!form.couponCode.trim()) {
+            Toast.show({ type: "error", text1: "Validation Error", text2: "Coupon code is required" });
             return false;
         }
         return true;
@@ -324,10 +610,10 @@ const EditCouponScreen = ({ navigation, route }: any) => {
             discountType: form.discountType,
             discountValue: Number(form.discountValue),
             minOrderValue: Number(form.minOrderValue),
+            couponCode: form.couponCode.trim(),
             description: form.description.trim(),
+            isActive: form.isActive,
         };
-
-        console.log("UPDATE COUPON PAYLOAD:", payload);
 
         setLoading(true);
         try {
@@ -335,30 +621,17 @@ const EditCouponScreen = ({ navigation, route }: any) => {
                 `${API_ENDPOINTS.VENDORCOUPONUPDATE}/${couponId}`,
                 payload
             );
-
             setLoading(false);
 
             if (res?.success) {
-                Toast.show({
-                    type: "success",
-                    text1: "Success",
-                    text2: "Coupon updated successfully!",
-                });
+                Toast.show({ type: "success", text1: "Success", text2: "Coupon updated successfully!" });
                 navigation.goBack();
             } else {
-                Toast.show({
-                    type: "error",
-                    text1: "Error",
-                    text2: res?.message || "Failed to update coupon",
-                });
+                Toast.show({ type: "error", text1: "Error", text2: res?.message || "Failed to update coupon" });
             }
         } catch (err: any) {
             setLoading(false);
-            Toast.show({
-                type: "error",
-                text1: "Error",
-                text2: err?.message || "Something went wrong. Please try again.",
-            });
+            Toast.show({ type: "error", text1: "Error", text2: err?.message || "Something went wrong. Please try again." });
         }
     };
 
@@ -366,10 +639,8 @@ const EditCouponScreen = ({ navigation, route }: any) => {
         form.discountType &&
         form.discountValue &&
         form.minOrderValue &&
-        form.couponCode &&
-        form.description;
+        form.couponCode;
 
-    // ── Loading skeleton while fetching ──
     if (fetching) {
         return (
             <SafeAreaView style={{ flex: 1, backgroundColor: colors.scaffoldBg }}>
@@ -389,10 +660,7 @@ const EditCouponScreen = ({ navigation, route }: any) => {
                 behavior={Platform.OS === "ios" ? "padding" : "height"}
                 keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
             >
-                <AppBar
-                    title="Edit Coupon"
-                    onBack={() => navigation.goBack()}
-                />
+                <AppBar title="Edit Coupon" onBack={() => navigation.goBack()} />
 
                 <ScrollView
                     style={{ flex: 1, backgroundColor: colors.scaffoldBg }}
@@ -447,30 +715,63 @@ const EditCouponScreen = ({ navigation, route }: any) => {
                         <View style={localStyles.infoBox}>
                             <Ionicons name="information-circle-outline" size={16} color={colors.primary} />
                             <Text style={localStyles.infoText}>
-                                Coupon codes are auto-uppercased and spaces are removed.
+                                Coupon codes are auto-uppercased and spaces are removed. Use only letters and numbers.
                             </Text>
                         </View>
 
+                        {/* ── Coupon Type Dropdown (same as Add) ── */}
+                        <DropdownPicker
+                            label="Coupon Type"
+                            value={selectedType}
+                            placeholder="Select Coupon Type"
+                            options={COUPON_TYPES.map((o) => ({
+                                _id: o.value,
+                                name: o.label,
+                            }))}
+                            onSelect={(opt) => handleCouponTypeChange(opt._id)}
+                        />
+
+                        {/* ── Coupon Code (read-only, auto-generated) ── */}
                         <FloatingInput
                             label="Coupon Code *"
                             placeholder="e.g. SPRING20"
+                            editable={false}
                             value={form.couponCode}
-                            onChangeText={handleCouponCodeChange}
+                            onChangeText={(t: string) =>
+                                handleChange("couponCode", t.toUpperCase().replace(/\s/g, ""))
+                            }
                             autoCapitalize="characters"
                             rightIcon={
                                 <Ionicons name="copy-outline" size={18} color={colors.placeholder} />
                             }
                         />
 
-                        <FloatingInput
-                            label="Description *"
-                            placeholder="e.g. 20% off on all products for orders above ₹500"
-                            value={form.description}
-                            onChangeText={(t: string) => handleChange("description", t)}
-                            multiline
-                            numberOfLines={3}
-                            style={{ height: 80, textAlignVertical: "top" }}
-                        />
+                        {/* ── isActive Toggle ── */}
+                        <View style={[
+                            localStyles.toggleRow,
+                            form.isActive && { borderColor: colors.primary, backgroundColor: "#EFF6FF" },
+                        ]}>
+                            <View style={localStyles.toggleLeft}>
+                                <Ionicons
+                                    name={form.isActive ? "checkmark-circle" : "close-circle-outline"}
+                                    size={22}
+                                    color={form.isActive ? colors.primary : colors.placeholder}
+                                />
+                                <View style={localStyles.toggleTextWrapper}>
+                                    <Text style={localStyles.toggleTitle}>Activate Coupon</Text>
+                                    <Text style={localStyles.toggleSubtitle}>
+                                        {form.isActive ? "Coupon will be live immediately" : "Coupon will be saved as inactive"}
+                                    </Text>
+                                </View>
+                            </View>
+                            <Switch
+                                value={form.isActive}
+                                onValueChange={(val) => handleChange("isActive", val)}
+                                trackColor={{ false: colors.formBorder, true: colors.primary + "55" }}
+                                thumbColor={form.isActive ? colors.primary : "#fff"}
+                                ios_backgroundColor={colors.formBorder}
+                            />
+                        </View>
 
                         {/* ── Submit ── */}
                         <TouchableOpacity

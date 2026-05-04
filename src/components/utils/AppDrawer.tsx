@@ -16,6 +16,8 @@ import {
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { colors } from "../../constants/AppThem";
 import { clearUserData, getUserData } from "../AsyncStorage/AsyncStorage";
+import { getRequest } from "../../constants/ApiClient";
+import { API_ENDPOINTS } from "../../constants/ApiEndpoints";
 
 const { width: W, height: H } = Dimensions.get("window");
 const DRAWER_WIDTH = W * 0.78;
@@ -26,8 +28,8 @@ const STATUS_BAR_HEIGHT =
 
 type NavChild = { icon: string; label: string; onPress: () => void };
 type DrawerItemDef =
-    | { kind: "item"; icon: string; label: string; onPress: () => void; badge?: number }
-    | { kind: "section"; icon: string; label: string; key: string; children: NavChild[] }
+    | { kind: "item"; icon: string; label: string; disabled?: boolean; onPress: () => void; badge?: number }
+    | { kind: "section"; icon: string; label: string; key: string; disabled?: boolean; children: NavChild[] }
     | { kind: "divider"; label?: string };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -39,16 +41,27 @@ export const logout = async (navigation?: any) => {
 
 // ─── Quick-stat pill shown in header ─────────────────────────────────────────
 
-const StatPill = ({ icon, value, label }: { icon: string; value: string; label: string }) => (
-    <View style={styles.statPill}>
-        <Ionicons name={icon as any} size={13} color="rgba(255,255,255,0.9)" />
-        <Text style={styles.statValue}>{value}</Text>
+const StatPill = ({
+    icon,
+    value,
+    label,
+    disabled = false,
+}: {
+    icon: string;
+    value: string;
+    label: string;
+    disabled?: boolean;
+}) => (
+    <View style={[styles.statPill, disabled && { opacity: 0.4 }]}>
+        <Ionicons
+            name={icon as any}
+            size={13}
+            color={disabled ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.9)"}
+        />
+        <Text style={styles.statValue}>{disabled ? "-" : value}</Text>
         <Text style={styles.statLabel}>{label}</Text>
     </View>
 );
-
-// ─── Single menu row ──────────────────────────────────────────────────────────
-
 const MenuRow = ({
     icon,
     label,
@@ -57,6 +70,7 @@ const MenuRow = ({
     hasChevron = true,
     onPress,
     chevronDown,
+    disabled,
 }: {
     icon: string;
     label: string;
@@ -65,35 +79,48 @@ const MenuRow = ({
     hasChevron?: boolean;
     onPress: () => void;
     chevronDown?: boolean;
+    disabled?: boolean;
 }) => (
     <TouchableOpacity
-        style={[styles.menuRow, active && styles.menuRowActive]}
-        onPress={onPress}
+        style={[styles.menuRow, active && styles.menuRowActive, disabled && { opacity: 0.4 }]}
+        onPress={disabled ? undefined : onPress}
         activeOpacity={0.65}
     >
         <View style={[styles.menuIconWrap, active && styles.menuIconWrapActive]}>
-            <Ionicons name={icon as any} size={18} color={active ? "#fff" : colors.primary} />
+            <Ionicons
+                name={icon as any}
+                size={18}
+                color={disabled ? "#94A3B8" : active ? "#fff" : colors.primary}
+            />
         </View>
-        <Text style={[styles.menuLabel, active && styles.menuLabelActive]}>{label}</Text>
-        {badge ? (
-            <View style={styles.badge}>
-                <Text style={styles.badgeText}>{badge}</Text>
-            </View>
-        ) : hasChevron ? (
+        <Text style={[styles.menuLabel, active && styles.menuLabelActive]}>
+            {label}
+        </Text>
+
+        {hasChevron && !disabled && (
             <Ionicons
                 name={chevronDown ? "chevron-down" : "chevron-forward"}
                 size={14}
                 color={active ? colors.primary : "#C8D0DC"}
             />
-        ) : null}
+        )}
     </TouchableOpacity>
 );
-
 // ─── Main Component ───────────────────────────────────────────────────────────
+interface DashboardCounts {
+    products: number;
+    brands: number;
+    coupons: number;
+    // Add future count keys here as the API grows
+}
 
 const AppDrawer = ({ navigation, closeDrawer }: any) => {
     const [openSection, setOpenSection] = useState<string | null>(null);
     const [user, setUser] = useState<any>(null);
+    const [userInfo, setUserInfo] = useState<any>(null);
+    const [vendor, setVendor] = useState<any>(null);
+    const [dashboardCounts, setDashboardCounts] = useState<DashboardCounts | null>(null);
+    const [loadingCounts, setLoadingCounts] = useState(true);
 
     const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -104,7 +131,6 @@ const AppDrawer = ({ navigation, closeDrawer }: any) => {
     ).current;
 
     useEffect(() => {
-        loadUser();
         Animated.parallel([
             Animated.spring(slideAnim, {
                 toValue: 0,
@@ -114,32 +140,56 @@ const AppDrawer = ({ navigation, closeDrawer }: any) => {
             }),
             Animated.timing(fadeAnim, {
                 toValue: 1,
-                duration: 200,
+                duration: 30,
                 useNativeDriver: true,
             }),
         ]).start(() => {
             // stagger menu rows in after drawer opens
             Animated.stagger(
-                38,
+                1,
                 rowAnims.map((a) =>
                     Animated.spring(a, {
                         toValue: 1,
                         useNativeDriver: true,
-                        bounciness: 4,
-                        speed: 18,
+                        bounciness: 0,   // 🔥 remove bounce
+                        speed: 50,       // 🔥 faster
                     })
                 )
             ).start();
         });
+        loadUser();
+        fetchDashboardCounts();
     }, []);
 
     const loadUser = async () => {
         try {
             const { user } = await getUserData();
-            setUser(user);
-        } catch { }
-    };
 
+            if (user?.user?._id) {
+                const res: any = await getRequest(
+                    `${API_ENDPOINTS.VENDORPROFILEGET}/${user.user._id}`
+                );
+
+                if (res?.success) {
+                    setUserInfo(res.data.user);
+                    setVendor(res.data.vendor);
+                }
+            }
+        } catch (err) {
+            console.log("Drawer load error:", err);
+        }
+    };
+    const fetchDashboardCounts = async () => {
+        try {
+            setLoadingCounts(true);
+            const res: any = await getRequest(API_ENDPOINTS.VENDORDASHBOARDCOUNTSGETALL);
+            if (res?.success && res?.data) setDashboardCounts(res.data as DashboardCounts);
+        } catch (error) {
+            console.log("Error fetching dashboard counts:", error);
+        } finally {
+            setLoadingCounts(false);
+        }
+    };
     const handleClose = () => {
         Animated.parallel([
             Animated.timing(slideAnim, {
@@ -165,7 +215,7 @@ const AppDrawer = ({ navigation, closeDrawer }: any) => {
             kind: "item",
             icon: "home-outline",
             label: "Home",
-            onPress: () => go("VendorDashboardScreen"),
+            onPress: () => go("Dashboard"),
         },
         {
             kind: "item",
@@ -189,6 +239,7 @@ const AppDrawer = ({ navigation, closeDrawer }: any) => {
             icon: "receipt-outline",
             label: "Orders",
             key: "orders",
+            disabled: true,
             children: [
                 { icon: "time-outline", label: "Placed", onPress: () => go("Orders", { status: "PLACED" }) },
                 { icon: "checkmark-circle-outline", label: "Confirmed", onPress: () => go("Orders", { status: "CONFIRMED" }) },
@@ -229,6 +280,28 @@ const AppDrawer = ({ navigation, closeDrawer }: any) => {
         },
     ];
 
+    const getKycStatus = () => {
+        if (!vendor?.isKycSubmitted) return { text: "KYC Pending", color: "#F59E0B" };
+        if (vendor?.isKycSubmitted && !vendor?.isKycApproved)
+            return { text: "KYC Under Review", color: "#FACC15" };
+        if (vendor?.isKycApproved)
+            return { text: "Verified Vendor", color: "#4ADE80" };
+
+        return { text: "Unknown", color: "#9CA3AF" };
+    };
+    const safeValue = (val: any, fallback = "0") => {
+        if (val === null || val === undefined) return fallback;
+        return String(val);
+    };
+    const getInitials = () => {
+        if (!userInfo) return "U";
+
+        const first = userInfo.firstName?.[0] || "";
+        const last = userInfo.lastName?.[0] || "";
+
+        return (first + last).toUpperCase() || "U";
+    };
+    const kyc = getKycStatus();
     // flatten to assign stagger index
     let rowIndex = 0;
 
@@ -261,33 +334,69 @@ const AppDrawer = ({ navigation, closeDrawer }: any) => {
                     {/* Avatar + info */}
                     <View style={styles.profileRow}>
                         <View style={styles.avatarRing}>
-                            <Image
-                                source={{ uri: "https://i.pravatar.cc/150" }}
-                                style={styles.avatar}
-                            />
+                            {userInfo?.profileImage ? (
+                                <Image
+                                    source={{ uri: userInfo.profileImage }}
+                                    style={styles.avatar}
+                                />
+                            ) : (
+                                <View style={styles.avatarPlaceholder}>
+                                    <Text style={styles.avatarText}>{getInitials()}</Text>
+                                </View>
+                            )}
+
                             <View style={styles.onlineDot} />
                         </View>
                         <View style={styles.profileInfo}>
                             <Text style={styles.name} numberOfLines={1}>
-                                {user?.user?.name || "Vendor User"}
+                                {userInfo
+                                    ? `${userInfo.firstName} ${userInfo.lastName}`
+                                    : "Vendor User"}
                             </Text>
                             <Text style={styles.mobile} numberOfLines={1}>
-                                {user?.user?.mobile ? `+91 ${user.user.mobile}` : "vendor@store.in"}
+                                {userInfo?.mobileNumber
+                                    ? `+91 ${userInfo.mobileNumber}`
+                                    : userInfo?.email || "vendor@store.in"}
                             </Text>
                             <View style={styles.verifiedRow}>
-                                <Ionicons name="checkmark-circle" size={12} color="#4ADE80" />
-                                <Text style={styles.verifiedText}>Verified Vendor</Text>
+                                <Ionicons name="checkmark-circle" size={12} color={kyc.color} />
+                                <Text style={[styles.verifiedText, { color: kyc.color }]}>
+                                    {kyc.text}
+                                </Text>
                             </View>
                         </View>
                     </View>
 
                     {/* Quick stats */}
                     <View style={styles.statsRow}>
-                        <StatPill icon="bag-outline" value="24" label="Orders" />
+                        {/* Orders (not in API yet) */}
+                        <StatPill
+                            icon="bag-outline"
+                            value={loadingCounts ? "..." : "0"}
+                            label="Orders"
+                        />
+
                         <View style={styles.statSep} />
-                        <StatPill icon="cube-outline" value="138" label="Products" />
+
+                        {/* Products (from API) */}
+                        <StatPill
+                            icon="cube-outline"
+                            value={
+                                loadingCounts
+                                    ? "..."
+                                    : safeValue(dashboardCounts?.products)
+                            }
+                            label="Products"
+                        />
+
                         <View style={styles.statSep} />
-                        <StatPill icon="star-outline" value="4.8" label="Rating" />
+
+                        {/* Rating (not in API yet) */}
+                        <StatPill
+                            icon="star-outline"
+                            value={loadingCounts ? "..." : "0.0"}
+                            label="Rating"
+                        />
                     </View>
                 </View>
 
@@ -325,11 +434,12 @@ const AppDrawer = ({ navigation, closeDrawer }: any) => {
 
                         if (item.kind === "item") {
                             return (
-                                <Animated.View key={item.label} style={animStyle}>
+                                <Animated.View key={item.label} >
                                     <MenuRow
                                         icon={item.icon}
                                         label={item.label}
                                         badge={item.badge}
+                                        disabled={item.disabled}
                                         onPress={item.onPress}
                                     />
                                 </Animated.View>
@@ -339,7 +449,7 @@ const AppDrawer = ({ navigation, closeDrawer }: any) => {
                         if (item.kind === "section") {
                             const isOpen = openSection === item.key;
                             return (
-                                <Animated.View key={item.key} style={animStyle}>
+                                <Animated.View key={item.key} >
                                     <MenuRow
                                         icon={item.icon}
                                         label={item.label}
@@ -349,7 +459,7 @@ const AppDrawer = ({ navigation, closeDrawer }: any) => {
                                             setOpenSection((p) => (p === item.key ? null : item.key))
                                         }
                                     />
-                                    {isOpen && (
+                                    {isOpen && !item.disabled && (
                                         <View style={styles.subList}>
                                             {item.children.map((child) => (
                                                 <TouchableOpacity
@@ -418,7 +528,19 @@ const styles = StyleSheet.create({
         ...StyleSheet.absoluteFillObject,
         backgroundColor: "rgba(0,0,0,0.45)",
     },
+    avatarPlaceholder: {
+        flex: 1,
+        borderRadius: 26,
+        backgroundColor: "#E2E8F0",
+        alignItems: "center",
+        justifyContent: "center",
+    },
 
+    avatarText: {
+        fontSize: 18,
+        fontWeight: "700",
+        color: "#334155",
+    },
     drawer: {
         position: "absolute",
         left: 0,

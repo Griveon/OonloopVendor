@@ -145,18 +145,27 @@ const formatDate = (iso?: string) => {
 };
 
 // "1998-05-21" → "21/05/1998"  (display format for the picker)
-const isoToDisplay = (iso: string): string => {
+const isoToDisplay = (iso: string) => {
     if (!iso) return "";
-    const [y, m, d] = iso.split("-");
-    if (!y || !m || !d) return "";
-    return `${d}/${m}/${y}`;
+
+    const date = new Date(iso);
+
+    if (isNaN(date.getTime())) return "";
+
+    const dd = String(date.getDate()).padStart(2, "0");
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const yyyy = date.getFullYear();
+
+    return `${dd}/${mm}/${yyyy}`;
 };
 
 // "21/05/1998" → "1998-05-21"
-const displayToIso = (display: string): string => {
-    const parts = display.split("/");
-    if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
-    return display;
+const displayToIso = (display: string) => {
+    if (!display) return "";
+
+    const [dd, mm, yyyy] = display.split("/");
+
+    return `${yyyy}-${mm}-${dd}`;
 };
 
 // "21/05/1998" → Date object
@@ -512,15 +521,24 @@ const EditProfileSheet = ({
         >
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
-                behavior={Platform.OS === "ios" ? "padding" : undefined}
+                behavior="padding"
             >
                 <Pressable style={bs.backdrop} onPress={onClose} />
 
                 <Animated.View
-                    style={[
-                        bs.sheet,
-                        { transform: [{ translateY: slideAnim }], paddingBottom: insets.bottom + 16 },
-                    ]}
+                    style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        height: '75%',
+                        backgroundColor: '#fff',
+                        borderTopLeftRadius: 20,
+                        borderTopRightRadius: 20,
+                        transform: [{ translateY: slideAnim }],
+                        paddingBottom: insets.bottom || 16,
+                    }}
+
                 >
                     {/* Handle */}
                     <View style={bs.handle} />
@@ -533,11 +551,11 @@ const EditProfileSheet = ({
                         </TouchableOpacity>
                     </View>
 
+
                     <ScrollView
                         style={{ flex: 1 }}
+                        contentContainerStyle={{ padding: 20 }}
                         showsVerticalScrollIndicator={false}
-                        keyboardShouldPersistTaps="handled"
-                        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 8 }}
                     >
                         <View style={bs.fieldRow}>
                             <View style={[bs.fieldWrap, { flex: 1 }]}>
