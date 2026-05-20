@@ -293,10 +293,10 @@ const CouponListingScreen = ({ navigation }: any) => {
 
     useFocusEffect(
         useCallback(() => {
-            if (vendor?._id) {
-                setPage(1);
-                fetchCoupons();
-            }
+            // if (vendor?._id) {
+            //     setPage(1);
+            fetchCoupons();
+            // }
         }, [vendor?._id])
     );
     // 2. Handle active filter
@@ -326,7 +326,10 @@ const CouponListingScreen = ({ navigation }: any) => {
     const fetchVendorProfile = async (userId: string) => {
         try {
             const res: any = await getRequest(
-                `${API_ENDPOINTS.VENDORPROFILEGET}/${userId}`
+                `${API_ENDPOINTS.VENDORPROFILEGET}/${userId}`,
+                undefined,
+                undefined,
+                false
             );
 
             if (res?.success && res?.data?.vendor) {
@@ -342,7 +345,9 @@ const CouponListingScreen = ({ navigation }: any) => {
         setLoading(true);
         setError(null);
         try {
-            const response = await getRequest(`${API_ENDPOINTS.VENDORCOUPONSGETALL}?vendorId=${vendor._id}`);
+            const { user } = await getUserData();
+
+            const response = await getRequest(`${API_ENDPOINTS.VENDORCOUPONSGETALL}?vendorId=${user?.user?._id}`);
 
             if (response?.success && response?.data) {
                 const newCoupons: Coupon[] = response.data;

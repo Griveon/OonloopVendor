@@ -167,7 +167,10 @@ const AppDrawer = ({ navigation, closeDrawer }: any) => {
 
             if (user?.user?._id) {
                 const res: any = await getRequest(
-                    `${API_ENDPOINTS.VENDORPROFILEGET}/${user.user._id}`
+                    `${API_ENDPOINTS.VENDORPROFILEGET}/${user.user._id}`,
+                    undefined,
+                undefined,
+                false
                 );
 
                 if (res?.success) {

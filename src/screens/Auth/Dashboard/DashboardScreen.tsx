@@ -278,7 +278,11 @@ const DashboardScreen = ({ navigation }: any) => {
 
     const fetchVendorProfile = async (user: any) => {
         try {
-            const res: any = await getRequest(`${API_ENDPOINTS.VENDORPROFILEGET}/${user?.user?._id}`);
+            const res: any = await getRequest(`${API_ENDPOINTS.VENDORPROFILEGET}/${user?.user?._id}`,
+                undefined,
+                undefined,
+                false
+            );
             if (res?.success && res?.data) {
                 const vendorData = res.data.vendor;
                 if (!vendorData?._id) return;

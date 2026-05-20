@@ -38,6 +38,8 @@ export const putRequest = async (endpoint: string, data: any, authRequired = tru
         let headers: Record<string, string> = {
             "Content-Type": "application/json",
         };
+        console.log("comes inside put request")
+        console.log(endpoint, data)
 
         if (authRequired) {
             const token = await AsyncStorage.getItem("userToken");

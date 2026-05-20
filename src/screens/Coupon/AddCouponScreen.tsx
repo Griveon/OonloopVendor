@@ -287,7 +287,10 @@ const AddCouponScreen = ({ navigation }: any) => {
     const fetchVendorProfile = async (user: any) => {
         try {
             const res: any = await getRequest(
-                `${API_ENDPOINTS.VENDORPROFILEGET}/${user?.user?._id}`
+                `${API_ENDPOINTS.VENDORPROFILEGET}/${user?.user?._id}`,
+                undefined,
+                undefined,
+                false
             );
             if (res?.success && res?.data) {
                 setVendor(res.data.vendor);
@@ -307,18 +310,35 @@ const AddCouponScreen = ({ navigation }: any) => {
         const selected = COUPON_TYPES.find((t) => t.value === type);
         if (!selected) return "";
 
-        return `${selected.code}${discountValue || ""}`.toUpperCase();
+        const valuePart = discountValue ? discountValue.replace(/\D/g, "") : "";
+
+        return `${selected.code}${valuePart}`.toUpperCase();
     };
 
     const handleCouponTypeChange = (type: string) => {
         setSelectedType(type);
 
-        const code = generateCouponCode(type, form.discountValue);
+        setForm((prev) => {
+            const code = generateCouponCode(type, prev.discountValue);
 
-        setForm((prev) => ({
-            ...prev,
-            couponCode: code,
-        }));
+            return {
+                ...prev,
+                discountType: type,
+                couponCode: code,
+            };
+        });
+    };
+
+    const handleDiscountValueChange = (value: string) => {
+        setForm((prev) => {
+            const code = generateCouponCode(prev.discountType, value);
+
+            return {
+                ...prev,
+                discountValue: value,
+                couponCode: code,
+            };
+        });
     };
 
     const validateForm = (): boolean => {
@@ -351,9 +371,10 @@ const AddCouponScreen = ({ navigation }: any) => {
 
     const handleSubmit = async () => {
         if (!validateForm()) return;
+        const { user } = await getUserData();
 
         const payload = {
-            vendorId: vendor?._id,
+            vendorId: user?.user?._id,
             discountType: form.discountType,
             discountValue: Number(form.discountValue),
             minOrderValue: Number(form.minOrderValue),
@@ -384,7 +405,7 @@ const AddCouponScreen = ({ navigation }: any) => {
         form.discountValue &&
         form.minOrderValue &&
         form.couponCode
-        
+
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.scaffoldBg }} edges={["bottom"]}>
             <KeyboardAvoidingView
@@ -417,7 +438,7 @@ const AddCouponScreen = ({ navigation }: any) => {
                             label={`Discount Value * ${form.discountType === "PERCENTAGE" ? "(%)" : "(₹)"}`}
                             placeholder={form.discountType === "PERCENTAGE" ? "e.g. 20" : "e.g. 100"}
                             value={form.discountValue}
-                            onChangeText={(t: string) => handleChange("discountValue", t)}
+                            onChangeText={handleDiscountValueChange}
                             keyboardType="numeric"
                             rightIcon={
                                 <Ionicons

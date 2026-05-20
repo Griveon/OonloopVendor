@@ -1,5 +1,5 @@
 // screens/vendor/VendorAddProductScreen.tsx
-import React, { useState, useCallback, useRef, useMemo } from "react";
+import React, { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import {
     View,
     ScrollView,
@@ -52,6 +52,7 @@ type Variant = {
     stock: string;
     sku: string;
     price: string;
+    mrp: string;
     images: UploadedImage[];
     attributes: Record<string, any>;
 };
@@ -68,7 +69,6 @@ type ProductForm = {
     name: string;
     description: string;
     slug: string;
-    mrp: string;
     stock: string;
     minQty: string;
     isActive: boolean;
@@ -779,6 +779,17 @@ const VariantCard = ({
                         </View>
                         <View style={{ flex: 1 }}>
                             <FloatingInput
+                                label="MRP (₹)"
+                                placeholder="0"
+                                value={variant.mrp}
+                                onChangeText={(t: string) =>
+                                    onChange(variant.id, "mrp", t.replace(/[^0-9.]/g, ""))
+                                }
+                                keyboardType="numeric"
+                            />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <FloatingInput
                                 label="Stock *"
                                 placeholder="0"
                                 value={variant.stock}
@@ -792,7 +803,7 @@ const VariantCard = ({
                     <View style={variantStyles.row2}>
                         <View style={{ flex: 1 }}>
                             <DropdownPicker
-                                label="Unit"
+                                label="Packaging Unit"
                                 value={variant.unit}
                                 placeholder="Select unit"
                                 options={unitOptions}
@@ -801,7 +812,7 @@ const VariantCard = ({
                         </View>
                         <View style={{ flex: 1 }}>
                             <FloatingInput
-                                label="Unit Value"
+                                label="Pack Size"
                                 placeholder="1"
                                 value={variant.unitValue}
                                 onChangeText={(t: string) =>
@@ -1248,7 +1259,6 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
         name: "",
         description: "",
         slug: "",
-        mrp: "",
         stock: "",
         minQty: "1",
         isActive: true,
@@ -1298,8 +1308,13 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
     const updateGst = (field: keyof GstDetails, value: string) =>
         setForm((p) => ({ ...p, gst: { ...p.gst, [field]: value } }));
 
-    // ── Load dropdowns ─────────────────────────────────────────────────────────
-    // ── Load dropdowns ─────────────────────────────────────────────────────────────
+    const Row = ({ label, value }: any) => (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
+            <Text>{label}</Text>
+            <Text>{value}</Text>
+        </View>
+    );
+
     const loadDropdowns = useCallback(async () => {
         setDdLoading(true);
         try {
@@ -1375,6 +1390,7 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                 stock: "",
                 sku: "",
                 price: "",
+                mrp: "",
                 images: [],
                 attributes: {},
             },
@@ -1477,7 +1493,6 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
     // ── Step validations ───────────────────────────────────────────────────────
     const isStep1Valid =
         form.name.trim().length > 2 &&
-        form.mrp.trim().length > 0 &&
         form.productCategoryId &&
         form.categoryId;
 
@@ -1486,13 +1501,15 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
     const isStep3Valid =
         variants.length > 0 &&
         variants.every(
-            (v) => v.price.trim() && v.stock.trim() && v.variantId
+            (v) => v.price.trim() && v.stock.trim()
         );
 
-    const isStep4Valid =
-        form.gst.hsnCode.trim().length > 0 && form.gst.gstPercent.trim().length > 0;
 
-    const isStep5Valid = productImages.length == 5 && productVideos.length == 1;
+    // const isStep4Valid =
+    //     form.gst.hsnCode.trim().length > 0 && form.gst.gstPercent.trim().length > 0;
+    const isStep4Valid = true; // GST is optional
+
+    const isStep5Valid = productImages.length == 5;
 
     const stepValidity: Record<number, boolean> = {
         1: !!isStep1Valid,
@@ -1508,7 +1525,6 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
     };
 
     const handleNext = () => {
-        console.log(parseFloat(form.mrp),);
         if (!stepValidity[currentStep]) return;
         setCompletedSteps((prev) => new Set([...prev, currentStep]));
         goToStep(currentStep + 1);
@@ -1558,7 +1574,6 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                 name: form.name.trim(),
                 description: form.description.trim(),
                 slug: form.slug,
-                mrp: parseFloat(form.mrp),
                 stock: parseInt(form.stock || "0"),
                 isActive: form.isActive,
                 isFeatured: form.isFeatured,
@@ -1580,6 +1595,9 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                     stock: parseInt(v.stock || "0"),
                     sku: v.sku,
                     price: parseFloat(v.price),
+                    mrp: form.gst.gstRuleId && parseFloat(form.gst.gstPercent || "0") > 0
+                        ? parseFloat(v.price || "0") + (parseFloat(v.price || "0") * parseFloat(form.gst.gstPercent || "0")) / 100
+                        : parseFloat(v.mrp || "0"),
                 })),
                 gst: {
                     gstRuleId: form.gst.gstRuleId || undefined,
@@ -1590,12 +1608,11 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                 },
             };
 
-            console.log(payload);
-            // setLoading(false);
-            // return
+            console.log("📤 Payload:", payload);
 
             const createRes: any = await postRequest(API_ENDPOINTS.CREATEPRODUCT, payload);
-            console.log(createRes);
+            console.log("✅ Product created:", createRes);
+
             if (!createRes?.success) {
                 Toast.show({
                     type: "error",
@@ -1606,28 +1623,12 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                 return;
             }
 
-            // Toast.show({
-            //     type: "success",
-            //     text1: "Product Created 🎉",
-            //     text2: "Uploading images... please wait a few seconds",
-            //     visibilityTime: 2500,
-            // });
-
             const productId = createRes?.data?._id;
+            console.log("📦 Product ID:", productId);
 
-            // const imgForm = new FormData();
-            // imgForm.append("productId", productId);
-            // productImages.forEach((img) => {
-            //     imgForm.append("productImages", {
-            //         uri: img.uri,
-            //         name: img.name,
-            //         type: img.type,
-            //     } as any);
-            // });
-            // console.log(token);
+            // Upload product images
             try {
                 const imgForm = new FormData();
-
                 imgForm.append("productId", productId);
 
                 productImages.forEach((img) => {
@@ -1637,11 +1638,9 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                         type: img.type || "image/jpeg",
                     });
                 });
-                console.log(productImages);
-                const uploadRes = await uploadRequest(
-                    API_ENDPOINTS.UPLOADPRODUCTIMAGE,
-                    imgForm
-                );
+
+                console.log("📸 Uploading product images...");
+                const uploadRes = await uploadRequest(API_ENDPOINTS.UPLOADPRODUCTIMAGE, imgForm);
 
                 if (!uploadRes?.success) {
                     Toast.show({
@@ -1649,10 +1648,11 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                         text1: "Image Upload Failed",
                         text2: "Product created but images failed to upload",
                     });
+                } else {
+                    console.log("✅ Product images uploaded successfully");
                 }
             } catch (err) {
-                console.log("Product image upload failed", err);
-
+                console.error("❌ Product image upload failed:", err);
                 Toast.show({
                     type: "error",
                     text1: "Image Upload Failed",
@@ -1660,10 +1660,10 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                 });
             }
 
+            // Upload product videos
             try {
                 if (productVideos.length > 0) {
                     const videoForm = new FormData();
-
                     videoForm.append("productId", productId);
 
                     productVideos.forEach((vid) => {
@@ -1674,10 +1674,8 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                         } as any);
                     });
 
-                    const videoUploadRes = await uploadRequest(
-                        API_ENDPOINTS.UPLOADPRODUCTVIDEO,
-                        videoForm
-                    );
+                    console.log("🎥 Uploading product videos...");
+                    const videoUploadRes = await uploadRequest(API_ENDPOINTS.UPLOADPRODUCTVIDEO, videoForm);
 
                     if (!videoUploadRes?.success) {
                         Toast.show({
@@ -1685,11 +1683,12 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                             text1: "Video Upload Failed",
                             text2: "Product created but videos failed to upload",
                         });
+                    } else {
+                        console.log("✅ Product videos uploaded successfully");
                     }
                 }
             } catch (err) {
-                console.log("Product video upload failed", err);
-
+                console.error("❌ Product video upload failed:", err);
                 Toast.show({
                     type: "error",
                     text1: "Video Upload Failed",
@@ -1697,43 +1696,103 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                 });
             }
 
+            // Upload variant images
             const variantsWithImages = variants.filter((v) => v.images.length > 0);
-            const savedVariants: any[] = createRes?.data?.variants ?? [];
+            console.log(`📷 Found ${variantsWithImages.length} variants with images`);
 
-            await Promise.allSettled(
-                variantsWithImages.map(async (v, i) => {
+            const savedVariants: any[] = createRes?.data?.variants ?? [];
+            console.log(`💾 Saved variants: ${savedVariants.length}`);
+
+            if (variantsWithImages.length > 0) {
+                const uploadPromises = variantsWithImages.map(async (v, i) => {
                     const variantDoc = savedVariants[i];
-                    if (!variantDoc?._id) return;
+
+                    if (!variantDoc?._id) {
+                        console.warn(`⚠️ Variant ${i} has no _id:`, variantDoc);
+                        return { success: false, error: "No variant ID" };
+                    }
+
                     const vForm = new FormData();
                     vForm.append("productId", productId);
                     vForm.append("variantId", variantDoc._id);
+
                     v.images.forEach((img) => {
                         vForm.append("variantImages", {
                             uri: img.uri,
-                            name: img.name,
-                            type: img.type,
+                            name: img.name || `variant_image_${Date.now()}.jpg`,
+                            type: img.type || "image/jpeg",
                         } as any);
                     });
-                    await fetch(`${API_ENDPOINTS.UPLOADPRODUCTVARIANTIMAGE}`, {
-                        method: "POST",
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                            "Content-Type": "multipart/form-data",
-                        },
-                        body: vForm,
-                    });
-                })
-            );
+
+                    console.log(`🖼️ Uploading ${v.images.length} images for variant ${i} (ID: ${variantDoc._id})`);
+                    console.log(`   Variant images:`, v.images);
+
+                    try {
+                        // ✅ Use the same uploadRequest function that works for product images
+                        const uploadRes = await uploadRequest(
+                            API_ENDPOINTS.UPLOADPRODUCTVARIANTIMAGE,
+                            vForm
+                        );
+
+                        console.log(`   Upload response:`, uploadRes);
+
+                        if (!uploadRes?.success) {
+                            console.error(`❌ Variant ${i} upload failed:`, uploadRes);
+                            Toast.show({
+                                type: "error",
+                                text1: "Variant Image Upload Failed",
+                                text2: uploadRes?.message || `Failed to upload variant ${i + 1} images`,
+                            });
+                            return {
+                                success: false,
+                                error: uploadRes?.message || "Upload failed",
+                                variantIndex: i
+                            };
+                        }
+
+                        console.log(`✅ Variant ${i} images uploaded successfully`);
+                        return { success: true, variantIndex: i };
+
+                    } catch (err: any) {
+                        console.error(`❌ Variant ${i} upload error:`, err);
+                        Toast.show({
+                            type: "error",
+                            text1: "Variant Image Upload Error",
+                            text2: `Error uploading variant ${i + 1}: ${err?.message}`,
+                        });
+                        return {
+                            success: false,
+                            error: err?.message || "Unknown error",
+                            variantIndex: i
+                        };
+                    }
+                });
+
+                const results = await Promise.allSettled(uploadPromises);
+
+                // Check results
+                const failedUploads = results
+                    .filter((r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value?.success))
+                    .map((r) => r.status === "rejected" ? r.reason : r.value);
+
+                if (failedUploads.length > 0) {
+                    console.warn(`⚠️ ${failedUploads.length} variant uploads failed:`, failedUploads);
+                } else if (variantsWithImages.length > 0) {
+                    console.log("✅ All variant images uploaded successfully");
+                }
+            }
 
             setLoading(false);
             Toast.show({
                 type: "success",
-                text1: "Product Added!",
+                text1: "Product Added! 🎉",
                 text2: "Your product is live on the platform.",
             });
             navigation.goBack();
+
         } catch (err: any) {
             setLoading(false);
+            console.error("❌ Fatal error in handleSubmit:", err);
             Toast.show({
                 type: "error",
                 text1: "Error",
@@ -1741,6 +1800,31 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
             });
         }
     };
+
+    const recalculateVariantGST = useCallback(() => {
+        const gstPercent = parseFloat(form.gst.gstPercent || "0");
+
+        const updated = variants.map((v) => {
+            const sellingPrice = parseFloat(v.price || "0");
+
+            const gstAmount = (sellingPrice * gstPercent) / 100;
+            const priceInclGst = sellingPrice + gstAmount;
+
+            return {
+                ...v,
+                mrp: priceInclGst.toFixed(2),
+                gstAmount: gstAmount.toFixed(2),
+            };
+        });
+
+        setVariants(updated);
+    }, [form.gst.gstPercent, variants]);
+
+    useEffect(() => {
+        if (variants.length > 0) {
+            recalculateVariantGST();
+        }
+    }, [form.gst.gstPercent]);
 
 
     const renderStep1 = () => (
@@ -1779,7 +1863,7 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                 /> */}
 
                 <View style={{ flexDirection: "row", gap: 10 }}>
-                    <View style={{ flex: 1 }}>
+                    {/* <View style={{ flex: 1 }}>
                         <FloatingInput
                             label="MRP (₹) *"
                             placeholder="0"
@@ -1788,7 +1872,7 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                             keyboardType="numeric"
                             rightIcon={<Ionicons name="cash-outline" size={18} color={colors.placeholder} />}
                         />
-                    </View>
+                    </View> */}
                     <View style={{ flex: 1 }}>
                         <FloatingInput
                             label="Total Stock"
@@ -1870,12 +1954,13 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                     value={form.isTrending}
                     onToggle={(v) => updateForm("isTrending", v)}
                 />
+                */}
                 <ToggleRow
                     label="Returnable"
                     hint="Allow return requests for this product"
                     value={form.returnable}
                     onToggle={(v) => updateForm("returnable", v)}
-                /> */}
+                />
             </Card>
         </>
     );
@@ -1992,8 +2077,11 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                 />
 
                 <Card>
-                    <InfoBox text="GST details are used for invoicing and tax compliance. HSN code and rate are mandatory." />
-
+                    <InfoBox text={
+                        form.gst.gstRuleId
+                            ? "GST rule applied — price including GST is auto-calculated from the selling price."
+                            : "No GST rule selected — MRP you entered on each variant is shown as-is."
+                    } />
                     {/* ✅ GST RULE DROPDOWN */}
                     <DropdownPicker
                         label="GST Rule"
@@ -2012,16 +2100,16 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                             updateGst("gstPercent", String(opt.igst || ""));
 
                             // 🔥 CALCULATE GST
-                            if (form.mrp && opt.igst) {
-                                const gstAmt =
-                                    (parseFloat(form.mrp) * parseFloat(opt.igst)) / 100;
+                            // if (form.mrp && opt.igst) {
+                            //     const gstAmt =
+                            //         (parseFloat(form.mrp) * parseFloat(opt.igst)) / 100;
 
-                                updateGst("gstAmount", gstAmt.toFixed(2));
-                                updateGst(
-                                    "priceIncludingGST",
-                                    (parseFloat(form.mrp) + gstAmt).toFixed(2)
-                                );
-                            }
+                            //     updateGst("gstAmount", gstAmt.toFixed(2));
+                            //     updateGst(
+                            //         "priceIncludingGST",
+                            //         (parseFloat(form.mrp) + gstAmt).toFixed(2)
+                            //     );
+                            // }
                         }}
                         loading={ddLoading}
                     />
@@ -2043,70 +2131,60 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                         }
                     />
 
-                    <View style={{ flexDirection: "row", gap: 10 }}>
-                        {/* 🔒 GST % */}
-                        <View style={{ flex: 1 }}>
-                            <FloatingInput
-                                label="GST % *"
-                                placeholder="e.g. 5"
-                                value={form.gst.gstPercent}
-                                onChangeText={(t: string) => updateGst("gstPercent", t)}
-                                keyboardType="numeric"
-                                editable={!isGstLocked}
-                            />
-                        </View>
+                    <View style={{ marginTop: 10 }}>
+                        <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: 10 }}>
+                            Variant GST Summary
+                        </Text>
 
-                        {/* 🔒 GST AMOUNT */}
-                        <View style={{ flex: 1 }}>
-                            <FloatingInput
-                                label="GST Amount (₹)"
-                                placeholder="Auto calc"
-                                value={form.gst.gstAmount}
-                                onChangeText={(t: string) => updateGst("gstAmount", t)}
-                                keyboardType="numeric"
-                                editable={!isGstLocked}
-                            />
-                        </View>
+                        {variants?.map((v: any, index: number) => {
+                            const sellingPrice = parseFloat(v.price || "0");
+                            const manualMrp = parseFloat(v.mrp || "0");
+                            const gstPercent = parseFloat(form.gst.gstPercent || "0");
+                            const hasGstRule = !!form.gst.gstRuleId && gstPercent > 0;
+
+                            const gstAmount = hasGstRule ? (sellingPrice * gstPercent) / 100 : 0;
+                            const priceInclGst = hasGstRule ? sellingPrice + gstAmount : manualMrp;
+
+                            return (
+                                <View
+                                    key={v.id || index}
+                                    style={{
+                                        padding: 12,
+                                        borderWidth: 1,
+                                        borderColor: "#E5E7EB",
+                                        borderRadius: 10,
+                                        marginBottom: 10,
+                                        backgroundColor: "#fff",
+                                    }}
+                                >
+                                    <Text style={{ fontWeight: "600", marginBottom: 8 }}>
+                                        Variant {index + 1}
+                                    </Text>
+
+                                    <Row label="Selling Price (₹)" value={`₹ ${sellingPrice.toFixed(2)}`} />
+
+                                    {hasGstRule ? (
+                                        <>
+                                            <Row label={`GST (${gstPercent}%)`} value={`₹ ${gstAmount.toFixed(2)}`} />
+                                            <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
+                                                <Text style={{ fontWeight: "700" }}>Price Incl. GST</Text>
+                                                <Text style={{ fontWeight: "700", color: "#16A34A" }}>
+                                                    ₹ {priceInclGst.toFixed(2)}
+                                                </Text>
+                                            </View>
+                                        </>
+                                    ) : (
+                                        <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
+                                            <Text>MRP</Text>
+                                            <Text style={{ fontWeight: "700", color: manualMrp > 0 ? "#16A34A" : "#9CA3AF" }}>
+                                                {manualMrp > 0 ? `₹ ${manualMrp.toFixed(2)}` : "Not set"}
+                                            </Text>
+                                        </View>
+                                    )}
+                                </View>
+                            );
+                        })}
                     </View>
-
-                    {/* 🔒 PRICE INCLUDING GST */}
-                    <FloatingInput
-                        label="Price Incl. GST (₹)"
-                        placeholder="Auto calc"
-                        value={form.gst.priceIncludingGST}
-                        onChangeText={(t: string) =>
-                            updateGst("priceIncludingGST", t)
-                        }
-                        keyboardType="numeric"
-                        editable={!isGstLocked}
-                        rightIcon={
-                            <Ionicons
-                                name="calculator-outline"
-                                size={18}
-                                color={colors.placeholder}
-                            />
-                        }
-                    />
-
-                    {/* 🔥 QUICK CALC */}
-                    {form.mrp && form.gst.gstPercent ? (
-                        <View style={step4Styles.calcBox}>
-                            <Ionicons
-                                name="information-circle-outline"
-                                size={15}
-                                color="#92400E"
-                            />
-                            <Text style={step4Styles.calcText}>
-                                Quick calc: ₹{form.mrp} × {form.gst.gstPercent}% ≈ ₹
-                                {(
-                                    (parseFloat(form.mrp) *
-                                        parseFloat(form.gst.gstPercent)) /
-                                    100
-                                ).toFixed(2)}{" "}
-                                GST
-                            </Text>
-                        </View>
-                    ) : null}
 
                     {/* 🔥 CLEAR BUTTON */}
                     {isGstLocked && (
@@ -2200,7 +2278,7 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                             setProductVideos((p) => p.filter((_, idx) => idx !== i))
                         }
                         label="Product Videos"
-                        max={1}
+                        max={0}
                     />
 
                     <Text style={step5Styles.hint}>

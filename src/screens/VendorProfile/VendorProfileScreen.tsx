@@ -743,14 +743,15 @@ const KycDocs = ({ docs }: { docs: VendorProfile["kycDocuments"] }) => {
 const VendorProfileScreen = ({ navigation, route }: any) => {
     const insets = useSafeAreaInsets();
     const [vendor, setVendor] = useState<VendorProfile | null>(route.params?.vendor || null);
-    const [userInfo, setUserInfo] = useState<UserProfile | null>(route.params?.user || null);
+    const [userInfo, setUserInfo] = useState<any | null>(route.params?.user || null);
     const [loading, setLoading] = useState(true);
     const [editSheetVisible, setEditSheetVisible] = useState(false);
 
     useEffect(() => {
         const init = async () => {
             const { user } = await getUserData();
-            if (user?.user?._id) fetchVendorProfile(user);
+            console.log("Logged in user:", user);
+            if (user?.user?._id || user?.user) fetchVendorProfile(user);
         };
         init();
     }, []);
@@ -759,13 +760,17 @@ const VendorProfileScreen = ({ navigation, route }: any) => {
         setLoading(true);
         try {
             const res: any = await getRequest(
-                `${API_ENDPOINTS.VENDORPROFILEGET}/${user?.user?._id}`
+                `${API_ENDPOINTS.VENDORPROFILEGET}/${user?.user?._id || user?.user}`,
+                undefined,
+                undefined,
+                false
             );
             if (res?.success && res?.data) {
                 setVendor(res.data.vendor);
                 setUserInfo(res.data.user);
+                console.log("Fetched vendor profile:", res.data.vendor);
             } else {
-                Toast.show({ type: "error", text1: "Error", text2: res?.message || "Failed to load" });
+                // Toast.show({ type: "error", text1: "Error", text2: res?.message || "Failed to load" });
             }
         } catch (err: any) {
             Toast.show({ type: "error", text1: "Error", text2: err?.message || "Something went wrong" });
@@ -798,23 +803,66 @@ const VendorProfileScreen = ({ navigation, route }: any) => {
         );
     }
 
-    if (!vendor || !userInfo) {
+    if (!vendor) {
         return (
             <SafeAreaView style={{ flex: 1, backgroundColor: colors.scaffoldBg }}>
                 <AppBar title="Vendor Profile" onBack={() => navigation.goBack()} />
-                <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24, gap: 12 }}>
-                    <Ionicons name="alert-circle-outline" size={40} color={colors.error} />
-                    <Text style={{ color: colors.secondary, fontSize: 15, textAlign: "center" }}>
-                        Failed to load vendor profile.
+
+                <View
+                    style={{
+                        flex: 1,
+                        justifyContent: "center",
+                        alignItems: "center",
+                        padding: 24,
+                        gap: 12,
+                    }}
+                >
+                    <Ionicons name="storefront-outline" size={44} color={colors.primary} />
+
+                    <Text
+                        style={{
+                            color: colors.secondary,
+                            fontSize: 16,
+                            fontWeight: "600",
+                            textAlign: "center",
+                        }}
+                    >
+                        Business profile not created yet
                     </Text>
-                    <TouchableOpacity style={s.retryBtn} onPress={() => fetchVendorProfile(null)}>
-                        <Text style={s.retryBtnText}>Try Again</Text>
+
+                    <Text
+                        style={{
+                            color: colors.placeholder,
+                            fontSize: 13,
+                            textAlign: "center",
+                        }}
+                    >
+                        Share your business details to get started
+                    </Text>
+
+                    {/* CTA Button */}
+                    <TouchableOpacity
+                        style={{
+                            backgroundColor: colors.primary,
+                            paddingHorizontal: 22,
+                            paddingVertical: 12,
+                            borderRadius: 10,
+                            marginTop: 10,
+                        }}
+                        onPress={() =>
+                            navigation.navigate("VendorBusinessInfoUpdating", {
+                                user: userInfo,
+                            })
+                        }
+                    >
+                        <Text style={{ color: "#fff", fontWeight: "700" }}>
+                            Share Business Info
+                        </Text>
                     </TouchableOpacity>
                 </View>
             </SafeAreaView>
         );
     }
-
     const addr = vendor.storeLocationAddress;
 
     return (

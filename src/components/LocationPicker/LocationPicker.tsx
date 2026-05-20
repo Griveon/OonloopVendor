@@ -150,10 +150,10 @@ const LocationBottomSheet: React.FC<SheetProps> = ({ visible, onClose, onSelect 
 
     const backdropAnim = useRef(new Animated.Value(0)).current;
     const [region, setRegion] = useState({
-        latitude: 19.0760,   // default Mumbai
-        longitude: 72.8777,
-        latitudeDelta: 0.015,
-        longitudeDelta: 0.0121,
+        latitude: 13.0827,  
+        longitude: 80.2707,
+        latitudeDelta: 0.5,   
+        longitudeDelta: 0.5,
     });
     const [query, setQuery] = useState("");
     const [suggestions, setSuggestions] = useState<Prediction[]>([]);
@@ -286,57 +286,57 @@ const LocationBottomSheet: React.FC<SheetProps> = ({ visible, onClose, onSelect 
         }
 
         // ── 2. GPS ─────────────────────────────────────────────────────────
-        const pos = await getGPSPosition();
-        if (!isMountedRef.current) { isDetectingRef.current = false; return; }
+        // const pos = await getGPSPosition();
+        // if (!isMountedRef.current) { isDetectingRef.current = false; return; }
 
-        if (!pos) {
-            setLocationStatus("error");
-            isDetectingRef.current = false;
-            setTimeout(() => {
-                if (!isMountedRef.current) return;
-                Alert.alert(
-                    "GPS Unavailable",
-                    "Could not get your position. Make sure GPS / Location is turned on and try again.",
-                    [{ text: "OK", style: "cancel" }]
-                );
-            }, 350);
-            return;
-        }
+        // if (!pos) {
+        //     setLocationStatus("error");
+        //     isDetectingRef.current = false;
+        //     setTimeout(() => {
+        //         if (!isMountedRef.current) return;
+        //         Alert.alert(
+        //             "GPS Unavailable",
+        //             "Could not get your position. Make sure GPS / Location is turned on and try again.",
+        //             [{ text: "OK", style: "cancel" }]
+        //         );
+        //     }, 350);
+        //     return;
+        // }
 
-        // ── 3. Reverse geocode ─────────────────────────────────────────────
-        const addr = await reverseGeocode(pos.lat, pos.lng);
-        if (!isMountedRef.current) { isDetectingRef.current = false; return; }
+        // // ── 3. Reverse geocode ─────────────────────────────────────────────
+        // const addr = await reverseGeocode(pos.lat, pos.lng);
+        // if (!isMountedRef.current) { isDetectingRef.current = false; return; }
 
-        if (!addr) {
-            setLocationStatus("error");
-            isDetectingRef.current = false;
-            return;
-        }
+        // if (!addr) {
+        //     setLocationStatus("error");
+        //     isDetectingRef.current = false;
+        //     return;
+        // }
 
-        if (addr) {
-            const newRegion = {
-                latitude: pos.lat,
-                longitude: pos.lng,
-                latitudeDelta: 0.015,
-                longitudeDelta: 0.0121,
-            };
+        // if (addr) {
+        //     const newRegion = {
+        //         latitude: pos.lat,
+        //         longitude: pos.lng,
+        //         latitudeDelta: 0.015,
+        //         longitudeDelta: 0.0121,
+        //     };
 
-            setRegion(newRegion);
-        }
+        //     setRegion(newRegion);
+        // }
 
-        const result: AddressResult = {
-            addressLine1: addr.addressLine1 || "",
-            addressLine2: addr.addressLine2 || "",
-            landmark: "",
-            city: addr.city || "",
-            state: addr.state || "",
-            postalCode: addr.postalCode || "",
-            country: addr.country || "India",
-            latitude: pos.lat,
-            longitude: pos.lng,
-        };
+        // const result: AddressResult = {
+        //     addressLine1: addr.addressLine1 || "",
+        //     addressLine2: addr.addressLine2 || "",
+        //     landmark: "",
+        //     city: addr.city || "",
+        //     state: addr.state || "",
+        //     postalCode: addr.postalCode || "",
+        //     country: addr.country || "India",
+        //     latitude: pos.lat,
+        //     longitude: pos.lng,
+        // };
 
-        setDetectedAddr(result);
+        // setDetectedAddr(result);
         setLocationStatus("success");
         isDetectingRef.current = false;
     }, []);

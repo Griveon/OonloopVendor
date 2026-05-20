@@ -1,6 +1,7 @@
 import React, { forwardRef } from "react";
 import { NavigationContainer, NavigationContainerRef } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { TransitionPresets } from "@react-navigation/stack"; // if using JS stack
 
 // Screens
 import AppLoadingScreen from "../screens/Splash/SplashScreen";
@@ -48,7 +49,7 @@ export type RootStackParamList = {
     ProductListing: undefined;
     AddProduct: undefined;
     EditProduct: undefined;
-    
+
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -56,7 +57,21 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const AppNavigator = forwardRef<NavigationContainerRef<RootStackParamList>>((props, ref) => {
     return (
         <NavigationContainer ref={ref}>
-            <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="AppLoading">
+            <Stack.Navigator screenOptions={{
+                headerShown: false,
+                // ✅ Smooth slide-from-right (like native iOS/Android)
+                animation: "slide_from_right",
+                // Fine-tune the animation feel
+                animationDuration: 350,
+                // Prevents flash on Android
+                animationTypeForReplace: "push",
+                // Gesture to swipe back (iOS)
+                gestureEnabled: true,
+                gestureDirection: "horizontal",
+                // Smooth the gesture response
+                fullScreenGestureEnabled: true,
+            }}
+                initialRouteName="AppLoading">
                 {/* Use children prop to pass extra props like setInitialRoute */}
                 <Stack.Screen name="AppLoading">
                     {(props) => <AppLoadingScreen {...props} />}
