@@ -43,11 +43,11 @@ interface KycStatus {
 // ─── Order card config ────────────────────────────────────────────────────────
 
 const ORDER_CARDS = [
-    { title: "Placed", color: "#3B82F6", status: "PLACED", icon: "time-outline" },
-    { title: "Confirmed", color: "#10B981", status: "CONFIRMED", icon: "checkmark-circle-outline" },
-    { title: "Shipped", color: "#F59E0B", status: "SHIPPED", icon: "bicycle-outline" },
-    { title: "Delivered", color: "#14B8A6", status: "DELIVERED", icon: "bag-check-outline" },
-    { title: "Cancelled", color: "#EF4444", status: "CANCELLED", icon: "close-circle-outline" },
+    { title: "Placed", color: "#3B82F6", status: "placed", icon: "time-outline", navigateTo: "Orders" },
+    { title: "Confirmed", color: "#10B981", status: "confirmed", icon: "checkmark-circle-outline", navigateTo: "Orders" },
+    { title: "Shipped", color: "#F59E0B", status: "shipped", icon: "bicycle-outline", navigateTo: "Orders" },
+    { title: "Delivered", color: "#14B8A6", status: "delivered", icon: "bag-check-outline", navigateTo: "Orders" },
+    { title: "Cancelled", color: "#EF4444", status: "cancelled", icon: "close-circle-outline", navigateTo: "Orders" },
 ];
 
 // ─── Stat card config ─────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ const STAT_CARD_META: {
     label: string;
     icon: string;
     color: string;
-    navigateTo?: string;
+    navigateTo: string;
 }[] = [
         { key: "products", label: "Products", icon: "cube-outline", color: "#6366F1", navigateTo: "ProductListing" },
         { key: "brands", label: "Brands", icon: "pricetag-outline", color: "#EC4899", navigateTo: "BrandListing" },
@@ -262,15 +262,24 @@ const DashboardScreen = ({ navigation }: any) => {
 
     useFocusEffect(
         useCallback(() => {
+            // ✅ Whenever Dashboard screen is focused again,
+            // reset bottom nav selected icon to Home.
+            setActiveTab("Home");
+
             const init = async () => {
                 const { user } = await getUserData();
+
                 if (user?.user?._id) {
                     await fetchVendorProfile(user);
                 }
+
                 await fetchDashboardCounts();
                 await fetchKycStatus();
             };
+
             init();
+
+            return () => { };
         }, [])
     );
 
@@ -366,6 +375,20 @@ const DashboardScreen = ({ navigation }: any) => {
         if (key === "Profile") navigation.navigate("Profile");
     };
 
+    // ── Navigation helpers ─────────────────────────────────────────────────────
+
+    const navigateToOrders = (status: string) => {
+        navigation.navigate({
+            name: "Orders",
+            params: { status },
+            merge: false,
+        });
+    };
+
+    const navigateToScreen = (screenName: string) => {
+        navigation.navigate(screenName);
+    };
+
     // ── Render ─────────────────────────────────────────────────────────────────
 
     return (
@@ -373,21 +396,6 @@ const DashboardScreen = ({ navigation }: any) => {
             <AppBar title="Dashboard" onMenu={() => setDrawerOpen(true)} />
 
             <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-
-                {/* ── Greeting banner ── */}
-                {/* {userInfo && (
-                    <View style={styles.banner}>
-                        <View style={styles.bannerLeft}>
-                            <Text style={styles.bannerGreet}>Good day 👋</Text>
-                            <Text style={styles.bannerName} numberOfLines={1}>
-                                {userInfo?.name ?? "Vendor"}
-                            </Text>
-                        </View>
-                        <View style={styles.bannerAvatar}>
-                            <Ionicons name="storefront-outline" size={24} color={colors.primary} />
-                        </View>
-                    </View>
-                )} */}
 
                 {/* ── Store Overview ── */}
                 <Text style={styles.sectionHeading}>Store Overview</Text>
@@ -401,7 +409,7 @@ const DashboardScreen = ({ navigation }: any) => {
                                 key={meta.key}
                                 style={styles.statCard}
                                 activeOpacity={0.82}
-                                onPress={() => meta.navigateTo && navigation.navigate(meta.navigateTo)}
+                                onPress={() => navigateToScreen(meta.navigateTo)}
                             >
                                 <View style={[styles.statIconWrap, { backgroundColor: meta.color + "18" }]}>
                                     <Ionicons name={meta.icon} size={22} color={meta.color} />
@@ -441,7 +449,7 @@ const DashboardScreen = ({ navigation }: any) => {
                             key={item.status}
                             style={styles.card}
                             activeOpacity={0.82}
-                            onPress={() => navigation.navigate("OrdersScreen", { status: item.status })}
+                            onPress={() => navigateToOrders(item.status)}
                         >
                             <View style={styles.cardTop}>
                                 <View style={[styles.cardIconWrap, { backgroundColor: item.color + "18" }]}>

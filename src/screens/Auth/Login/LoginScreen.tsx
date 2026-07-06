@@ -157,6 +157,7 @@ const LoginScreen = ({ navigation }: any) => {
             const res: any = await postRequest("/auth/login", {
                 identifier: form.mobile,
                 pin: form.pin,
+                role: 'vendor'
             });
             setLoading(false);
 

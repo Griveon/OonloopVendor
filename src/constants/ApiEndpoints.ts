@@ -17,6 +17,7 @@ export const API_ENDPOINTS = {
     BRANDCREATE: "/brand/create",
     VENDORPROFILEGET: "/vendor-profile/get",
     VENDORPROFILEUPDATE: "/vendor-profile/update",
+    VENDORHOLIDAYTOGGLE: "/vendor-profile/holiday",
     VENDORPROFILECREATE: "/vendor-profile/create",
     VENDORCOUPONSGETALL: "/vendorcoupon/getall",
     VENDORCOUPONCREATE: "/vendorcoupon/create",
@@ -44,6 +45,12 @@ export const API_ENDPOINTS = {
     GETALLPRODUCTCATEGORIESBYVENDORCATEGORY: "/productcategory/getbyvendorcategory",
     UPDATEPRODUCTSTATUS: "/product/status",
     UPDATEPRODUCTQUANTITY: "/product/quantity",
-
+    VENDORMAINCATALOGPRODUCTS: "/product/searchmaincatalog",
+    VENDORORDERSGETALL: "/vendororder/orders",
+    VENDORORDERUPDATESTATUS: "/vendororder/updateorderstatus",
+    VENDORPICKUPOTP: "/customerorder/vendor-pickup-otp",
+    VENDORKYCDOCUMENTSPREVIEW: `/vendor-profile/kycdocuments/preview`,
+    VENDORACCOUNTSTATEMENTSGET: "/vendoraccountstatements/get",
+    VENDORACCOUNTSTATEMENTSEXPORT: "/vendoraccountstatements/getexport",
 
 }

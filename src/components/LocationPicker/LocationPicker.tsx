@@ -18,7 +18,7 @@ import {
     TouchableWithoutFeedback,
     View,
 } from "react-native";
-import Geolocation from 'react-native-geolocation-service';
+// import Geolocation from 'react-native-geolocation-service';
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { placesService, Prediction } from "./PlacesService";
 import MapView, { PROVIDER_GOOGLE } from "react-native-maps";
@@ -26,6 +26,7 @@ const GOOGLE_MAPS_API_KEY = "AIzaSyD06rgmMtvcUfRMvFNvXlnn0rwpGUUzzAc";
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.82;
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import GetLocation from 'react-native-get-location';
 
 export interface AddressResult {
     addressLine1: string;
@@ -81,19 +82,28 @@ async function safeRequestPermission(): Promise<"granted" | "denied" | "blocked"
 
 // ─── GPS position ─────────────────────────────────────────────────────────────
 
-function getGPSPosition(): Promise<{ lat: number; lng: number } | null> {
-    return new Promise((resolve) => {
-        Geolocation.getCurrentPosition(
-            (pos: any) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-            (err: any) => {
-                console.warn("GPS error:", err?.code, err?.message);
-                resolve(null);
-            },
-            { enableHighAccuracy: true, timeout: 15000 }
-        );
-    });
-}
 
+async function getGPSPosition(): Promise<{ lat: number; lng: number } | null> {
+    try {
+        const location = await GetLocation.getCurrentPosition({
+            enableHighAccuracy: true,
+            timeout: 15000,
+        });
+        console.log(location);
+        return {
+            lat: location.latitude,
+            lng: location.longitude,
+        };
+    } catch (error: any) {
+        console.warn(
+            'GPS error:',
+            error?.code,
+            error?.message
+        );
+
+        return null;
+    }
+}
 // ─── Reverse geocode ──────────────────────────────────────────────────────────
 
 async function reverseGeocode(lat: number, lng: number): Promise<Partial<AddressResult> | null> {
@@ -286,57 +296,57 @@ const LocationBottomSheet: React.FC<SheetProps> = ({ visible, onClose, onSelect 
         }
 
         // ── 2. GPS ─────────────────────────────────────────────────────────
-        // const pos = await getGPSPosition();
-        // if (!isMountedRef.current) { isDetectingRef.current = false; return; }
+        const pos = await getGPSPosition();
+        if (!isMountedRef.current) { isDetectingRef.current = false; return; }
 
-        // if (!pos) {
-        //     setLocationStatus("error");
-        //     isDetectingRef.current = false;
-        //     setTimeout(() => {
-        //         if (!isMountedRef.current) return;
-        //         Alert.alert(
-        //             "GPS Unavailable",
-        //             "Could not get your position. Make sure GPS / Location is turned on and try again.",
-        //             [{ text: "OK", style: "cancel" }]
-        //         );
-        //     }, 350);
-        //     return;
-        // }
+        if (!pos) {
+            setLocationStatus("error");
+            isDetectingRef.current = false;
+            setTimeout(() => {
+                if (!isMountedRef.current) return;
+                Alert.alert(
+                    "GPS Unavailable",
+                    "Could not get your position. Make sure GPS / Location is turned on and try again.",
+                    [{ text: "OK", style: "cancel" }]
+                );
+            }, 350);
+            return;
+        }
 
-        // // ── 3. Reverse geocode ─────────────────────────────────────────────
-        // const addr = await reverseGeocode(pos.lat, pos.lng);
-        // if (!isMountedRef.current) { isDetectingRef.current = false; return; }
+        // ── 3. Reverse geocode ─────────────────────────────────────────────
+        const addr = await reverseGeocode(pos.lat, pos.lng);
+        if (!isMountedRef.current) { isDetectingRef.current = false; return; }
 
-        // if (!addr) {
-        //     setLocationStatus("error");
-        //     isDetectingRef.current = false;
-        //     return;
-        // }
+        if (!addr) {
+            setLocationStatus("error");
+            isDetectingRef.current = false;
+            return;
+        }
 
-        // if (addr) {
-        //     const newRegion = {
-        //         latitude: pos.lat,
-        //         longitude: pos.lng,
-        //         latitudeDelta: 0.015,
-        //         longitudeDelta: 0.0121,
-        //     };
+        if (addr) {
+            const newRegion = {
+                latitude: pos.lat,
+                longitude: pos.lng,
+                latitudeDelta: 0.015,
+                longitudeDelta: 0.0121,
+            };
 
-        //     setRegion(newRegion);
-        // }
+            setRegion(newRegion);
+        }
 
-        // const result: AddressResult = {
-        //     addressLine1: addr.addressLine1 || "",
-        //     addressLine2: addr.addressLine2 || "",
-        //     landmark: "",
-        //     city: addr.city || "",
-        //     state: addr.state || "",
-        //     postalCode: addr.postalCode || "",
-        //     country: addr.country || "India",
-        //     latitude: pos.lat,
-        //     longitude: pos.lng,
-        // };
+        const result: AddressResult = {
+            addressLine1: addr.addressLine1 || "",
+            addressLine2: addr.addressLine2 || "",
+            landmark: "",
+            city: addr.city || "",
+            state: addr.state || "",
+            postalCode: addr.postalCode || "",
+            country: addr.country || "India",
+            latitude: pos.lat,
+            longitude: pos.lng,
+        };
 
-        // setDetectedAddr(result);
+        setDetectedAddr(result);
         setLocationStatus("success");
         isDetectingRef.current = false;
     }, []);

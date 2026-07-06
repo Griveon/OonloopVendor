@@ -1264,7 +1264,7 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
         isActive: true,
         isFeatured: false,
         isTrending: false,
-        returnable: true,
+        returnable: false,
         material: "",
         pattern: "",
         sleeveLength: "",
@@ -1595,9 +1595,7 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                     stock: parseInt(v.stock || "0"),
                     sku: v.sku,
                     price: parseFloat(v.price),
-                    mrp: form.gst.gstRuleId && parseFloat(form.gst.gstPercent || "0") > 0
-                        ? parseFloat(v.price || "0") + (parseFloat(v.price || "0") * parseFloat(form.gst.gstPercent || "0")) / 100
-                        : parseFloat(v.mrp || "0"),
+                    mrp: parseFloat(v.mrp || "0"),
                 })),
                 gst: {
                     gstRuleId: form.gst.gstRuleId || undefined,
@@ -1801,30 +1799,30 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
         }
     };
 
-    const recalculateVariantGST = useCallback(() => {
-        const gstPercent = parseFloat(form.gst.gstPercent || "0");
+    // const recalculateVariantGST = useCallback(() => {
+    //     const gstPercent = parseFloat(form.gst.gstPercent || "0");
 
-        const updated = variants.map((v) => {
-            const sellingPrice = parseFloat(v.price || "0");
+    //     const updated = variants.map((v) => {
+    //         const sellingPrice = parseFloat(v.price || "0");
 
-            const gstAmount = (sellingPrice * gstPercent) / 100;
-            const priceInclGst = sellingPrice + gstAmount;
+    //         const gstAmount = (sellingPrice * gstPercent) / 100;
+    //         const priceInclGst = sellingPrice + gstAmount;
 
-            return {
-                ...v,
-                mrp: priceInclGst.toFixed(2),
-                gstAmount: gstAmount.toFixed(2),
-            };
-        });
+    //         return {
+    //             ...v,
+    //             mrp: priceInclGst.toFixed(2),
+    //             gstAmount: gstAmount.toFixed(2),
+    //         };
+    //     });
 
-        setVariants(updated);
-    }, [form.gst.gstPercent, variants]);
+    //     setVariants(updated);
+    // }, [form.gst.gstPercent, variants]);
 
-    useEffect(() => {
-        if (variants.length > 0) {
-            recalculateVariantGST();
-        }
-    }, [form.gst.gstPercent]);
+    // useEffect(() => {
+    //     if (variants.length > 0) {
+    //         recalculateVariantGST();
+    //     }
+    // }, [form.gst.gstPercent]);
 
 
     const renderStep1 = () => (
@@ -2131,7 +2129,7 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                         }
                     />
 
-                    <View style={{ marginTop: 10 }}>
+                    {/* <View style={{ marginTop: 10 }}>
                         <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: 10 }}>
                             Variant GST Summary
                         </Text>
@@ -2142,8 +2140,10 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                             const gstPercent = parseFloat(form.gst.gstPercent || "0");
                             const hasGstRule = !!form.gst.gstRuleId && gstPercent > 0;
 
-                            const gstAmount = hasGstRule ? (sellingPrice * gstPercent) / 100 : 0;
-                            const priceInclGst = hasGstRule ? sellingPrice + gstAmount : manualMrp;
+                            const gstAmount = hasGstRule
+                                ? (sellingPrice * gstPercent) / (100 + gstPercent)
+                                : 0;
+                            const basePriceExGst = sellingPrice - gstAmount; // price before GST
 
                             return (
                                 <View
@@ -2165,13 +2165,21 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
 
                                     {hasGstRule ? (
                                         <>
-                                            <Row label={`GST (${gstPercent}%)`} value={`₹ ${gstAmount.toFixed(2)}`} />
+                                            <Row
+                                                label="Base Price (ex-GST)"
+                                                value={`₹ ${basePriceExGst.toFixed(2)}`}
+                                            />
+                                            <Row
+                                                label={`GST (${gstPercent}%)`}
+                                                value={`₹ ${gstAmount.toFixed(2)}`}
+                                            />
                                             <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
-                                                <Text style={{ fontWeight: "700" }}>Price Incl. GST</Text>
+                                                <Text style={{ fontWeight: "700" }}>Price (GST-inclusive)</Text>
                                                 <Text style={{ fontWeight: "700", color: "#16A34A" }}>
-                                                    ₹ {priceInclGst.toFixed(2)}
+                                                    ₹ {sellingPrice.toFixed(2)}
                                                 </Text>
                                             </View>
+                                            <Row label="MRP" value={manualMrp > 0 ? `₹ ${manualMrp.toFixed(2)}` : "Not set"} />
                                         </>
                                     ) : (
                                         <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 4 }}>
@@ -2184,7 +2192,7 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                                 </View>
                             );
                         })}
-                    </View>
+                    </View> */}
 
                     {/* 🔥 CLEAR BUTTON */}
                     {isGstLocked && (

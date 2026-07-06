@@ -1,5 +1,5 @@
 // screens/VendorBusinessInfoUpdatingScreen.tsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
     View,
     ScrollView,
@@ -9,6 +9,7 @@ import {
     KeyboardAvoidingView,
     Platform,
     StyleSheet,
+    BackHandler,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "react-native-vector-icons/Ionicons";
@@ -21,13 +22,19 @@ import AppBar from "../../../components/utils/AppBar";
 import { localStyles } from "./VendorRegistrationStyle";
 import FloatingInput from "../../../components/inputs/FloatingInput";
 import TimePickerField from "../../../components/TimePicker/TimePicker";
-import GoogleAddressPicker, { AddressResult } from "../../../components/LocationPicker/LocationPicker";
-import { getUserData, storeUserData } from "../../../components/AsyncStorage/AsyncStorage";
-import { showError } from "../../../components/utils/Toaster";
+import GoogleAddressPicker, {
+    AddressResult,
+} from "../../../components/LocationPicker/LocationPicker";
+import {
+    getUserData,
+    storeUserData,
+} from "../../../components/AsyncStorage/AsyncStorage";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+type WorkingHours = {
+    openingTime: string;
+    closingTime: string;
+};
 
-type WorkingHours = { openingTime: string; closingTime: string };
 type StoreAddress = {
     addressLine1: string;
     addressLine2: string;
@@ -39,6 +46,7 @@ type StoreAddress = {
     latitude: number;
     longitude: number;
 };
+
 type FormState = {
     storeName: string;
     businessType: string;
@@ -49,9 +57,15 @@ type FormState = {
     storeLocationAddress: StoreAddress;
 };
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-
-const WORKING_DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+const WORKING_DAYS = [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+];
 
 const BUSINESS_TYPES = [
     { label: "Proprietorship", value: "proprietorship" },
@@ -61,24 +75,42 @@ const BUSINESS_TYPES = [
     { label: "Public Ltd.", value: "public_limited" },
 ];
 
-// ─── Step Indicator ──────────────────────────────────────────────────────────
-
 const StepIndicator = ({ step, total }: { step: number; total: number }) => (
     <View style={stepStyles.row}>
         {Array.from({ length: total }).map((_, i) => {
             const active = i + 1 === step;
             const done = i + 1 < step;
+
             return (
                 <React.Fragment key={i}>
-                    <View style={[stepStyles.circle, active && stepStyles.circleActive, done && stepStyles.circleDone]}>
+                    <View
+                        style={[
+                            stepStyles.circle,
+                            active && stepStyles.circleActive,
+                            done && stepStyles.circleDone,
+                        ]}
+                    >
                         {done ? (
                             <Ionicons name="checkmark" size={12} color="#fff" />
                         ) : (
-                            <Text style={[stepStyles.num, active && stepStyles.numActive]}>{i + 1}</Text>
+                            <Text
+                                style={[
+                                    stepStyles.num,
+                                    active && stepStyles.numActive,
+                                ]}
+                            >
+                                {i + 1}
+                            </Text>
                         )}
                     </View>
+
                     {i < total - 1 && (
-                        <View style={[stepStyles.line, done && stepStyles.lineDone]} />
+                        <View
+                            style={[
+                                stepStyles.line,
+                                done && stepStyles.lineDone,
+                            ]}
+                        />
                     )}
                 </React.Fragment>
             );
@@ -87,22 +119,48 @@ const StepIndicator = ({ step, total }: { step: number; total: number }) => (
 );
 
 const stepStyles = StyleSheet.create({
-    row: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 8 },
-    circle: {
-        width: 28, height: 28, borderRadius: 14,
-        borderWidth: 2, borderColor: colors.formBorder,
-        backgroundColor: colors.formBg,
-        justifyContent: "center", alignItems: "center",
+    row: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        marginBottom: 8,
     },
-    circleActive: { borderColor: colors.primary, backgroundColor: colors.primary },
-    circleDone: { borderColor: colors.primary, backgroundColor: colors.primary },
-    num: { fontSize: 12, fontWeight: "700", color: colors.placeholder },
-    numActive: { color: "#fff" },
-    line: { flex: 1, height: 2, backgroundColor: colors.formBorder, marginHorizontal: 4 },
-    lineDone: { backgroundColor: colors.primary },
+    circle: {
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        borderWidth: 2,
+        borderColor: colors.formBorder,
+        backgroundColor: colors.formBg,
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    circleActive: {
+        borderColor: colors.primary,
+        backgroundColor: colors.primary,
+    },
+    circleDone: {
+        borderColor: colors.primary,
+        backgroundColor: colors.primary,
+    },
+    num: {
+        fontSize: 12,
+        fontWeight: "700",
+        color: colors.placeholder,
+    },
+    numActive: {
+        color: "#fff",
+    },
+    line: {
+        flex: 1,
+        height: 2,
+        backgroundColor: colors.formBorder,
+        marginHorizontal: 4,
+    },
+    lineDone: {
+        backgroundColor: colors.primary,
+    },
 });
-
-// ─── Business Type Selector ───────────────────────────────────────────────────
 
 const BusinessTypeSelector = ({
     selected,
@@ -113,9 +171,11 @@ const BusinessTypeSelector = ({
 }) => (
     <View style={inputloginStyles.wrapper}>
         <Text style={inputloginStyles.label}>Business Type *</Text>
+
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             {BUSINESS_TYPES.map((bt) => {
                 const active = selected === bt.value;
+
                 return (
                     <TouchableOpacity
                         key={bt.value}
@@ -123,7 +183,12 @@ const BusinessTypeSelector = ({
                         style={[bizStyles.chip, active && bizStyles.chipActive]}
                         activeOpacity={0.7}
                     >
-                        <Text style={[bizStyles.chipText, active && bizStyles.chipTextActive]}>
+                        <Text
+                            style={[
+                                bizStyles.chipText,
+                                active && bizStyles.chipTextActive,
+                            ]}
+                        >
                             {bt.label}
                         </Text>
                     </TouchableOpacity>
@@ -135,17 +200,26 @@ const BusinessTypeSelector = ({
 
 const bizStyles = StyleSheet.create({
     chip: {
-        paddingVertical: 8, paddingHorizontal: 14,
-        borderRadius: 20, borderWidth: 1.5,
+        paddingVertical: 8,
+        paddingHorizontal: 14,
+        borderRadius: 20,
+        borderWidth: 1.5,
         borderColor: colors.formBorder,
         backgroundColor: colors.formBg,
     },
-    chipActive: { borderColor: colors.primary, backgroundColor: "#EFF6FF" },
-    chipText: { fontSize: 13, color: colors.placeholder, fontWeight: "500" },
-    chipTextActive: { color: colors.primary },
+    chipActive: {
+        borderColor: colors.primary,
+        backgroundColor: "#EFF6FF",
+    },
+    chipText: {
+        fontSize: 13,
+        color: colors.placeholder,
+        fontWeight: "500",
+    },
+    chipTextActive: {
+        color: colors.primary,
+    },
 });
-
-// ─── Day Picker ───────────────────────────────────────────────────────────────
 
 const DayPicker = ({
     selected,
@@ -156,17 +230,27 @@ const DayPicker = ({
 }) => (
     <View style={inputloginStyles.wrapper}>
         <Text style={inputloginStyles.label}>Working Days *</Text>
+
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
             {WORKING_DAYS.map((day) => {
                 const active = selected.includes(day);
+
                 return (
                     <TouchableOpacity
                         key={day}
                         onPress={() => onToggle(day)}
-                        style={[dayStyles.chip, active && dayStyles.chipActive]}
+                        style={[
+                            dayStyles.chip,
+                            active && dayStyles.chipActive,
+                        ]}
                         activeOpacity={0.7}
                     >
-                        <Text style={[dayStyles.chipText, active && dayStyles.chipTextActive]}>
+                        <Text
+                            style={[
+                                dayStyles.chipText,
+                                active && dayStyles.chipTextActive,
+                            ]}
+                        >
                             {day.slice(0, 3).toUpperCase()}
                         </Text>
                     </TouchableOpacity>
@@ -178,76 +262,44 @@ const DayPicker = ({
 
 const dayStyles = StyleSheet.create({
     chip: {
-        width: 42, height: 42, borderRadius: 21,
-        borderWidth: 1.5, borderColor: colors.formBorder,
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        borderWidth: 1.5,
+        borderColor: colors.formBorder,
         backgroundColor: colors.formBg,
-        justifyContent: "center", alignItems: "center",
+        justifyContent: "center",
+        alignItems: "center",
     },
-    chipActive: { borderColor: colors.primary, backgroundColor: colors.primary },
-    chipText: { fontSize: 12, fontWeight: "700", color: colors.placeholder },
-    chipTextActive: { color: "#fff" },
+    chipActive: {
+        borderColor: colors.primary,
+        backgroundColor: colors.primary,
+    },
+    chipText: {
+        fontSize: 12,
+        fontWeight: "700",
+        color: colors.placeholder,
+    },
+    chipTextActive: {
+        color: "#fff",
+    },
 });
-
-// ─── Time Input Row ───────────────────────────────────────────────────────────
-
-const TimeInputRow = ({
-    opening,
-    closing,
-    onChangeOpening,
-    onChangeClosing,
-}: {
-    opening: string;
-    closing: string;
-    onChangeOpening: (t: string) => void;
-    onChangeClosing: (t: string) => void;
-}) => (
-    <View style={inputloginStyles.wrapper}>
-        <Text style={inputloginStyles.label}>Working Hours *</Text>
-        <View style={{ flexDirection: "row", gap: 10 }}>
-            <View style={{ flex: 1 }}>
-                <FloatingInput
-                    placeholder="09:00"
-                    value={opening}
-                    onChangeText={onChangeOpening}
-                    keyboardType="numeric"
-                    rightIcon={<Ionicons name="time-outline" size={18} color={colors.placeholder} />}
-                />
-            </View>
-            <View style={timeStyles.separator}>
-                <Text style={timeStyles.dash}>—</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-                <FloatingInput
-                    placeholder="21:00"
-                    value={closing}
-                    onChangeText={onChangeClosing}
-                    keyboardType="numeric"
-                    rightIcon={<Ionicons name="time-outline" size={18} color={colors.placeholder} />}
-                />
-            </View>
-        </View>
-    </View>
-);
-
-const timeStyles = StyleSheet.create({
-    separator: { justifyContent: "center", alignItems: "center", paddingTop: 4 },
-    dash: { fontSize: 18, color: colors.placeholder, fontWeight: "300" },
-});
-
-// ─── Page Header ──────────────────────────────────────────────────────────────
 
 const PageHeader = ({ step }: { step: number }) => {
-    const copy = step === 1
-        ? {
-            eyebrow: "Step 1 of 2 · Business Details",
-            title: "Tell us about\nyour business",
-            subtitle: "We'd love to know a few details about your store so we can set everything up perfectly for you.",
-        }
-        : {
-            eyebrow: "Step 2 of 2 · Store Location",
-            title: "Where is your\nstore located?",
-            subtitle: "Help your customers find you by adding your store's address. This will be visible on your public profile.",
-        };
+    const copy =
+        step === 1
+            ? {
+                eyebrow: "Step 1 of 2 · Business Details",
+                title: "Tell us about\nyour business",
+                subtitle:
+                    "We'd love to know a few details about your store so we can set everything up perfectly for you.",
+            }
+            : {
+                eyebrow: "Step 2 of 2 · Store Location",
+                title: "Where is your\nstore located?",
+                subtitle:
+                    "Help your customers find you by adding your store's address. This will be visible on your public profile.",
+            };
 
     return (
         <View style={headerStyles.container}>
@@ -258,10 +310,14 @@ const PageHeader = ({ step }: { step: number }) => {
                     color={colors.primary}
                     style={{ marginRight: 5 }}
                 />
+
                 <Text style={headerStyles.eyebrow}>{copy.eyebrow}</Text>
             </View>
+
             <Text style={headerStyles.title}>{copy.title}</Text>
+
             <Text style={headerStyles.subtitle}>{copy.subtitle}</Text>
+
             <StepIndicator step={step} total={2} />
         </View>
     );
@@ -307,8 +363,6 @@ const headerStyles = StyleSheet.create({
     },
 });
 
-// ─── Main Screen ──────────────────────────────────────────────────────────────
-
 const VendorBusinessInfoUpdatingScreen = ({ navigation }: any) => {
     const insets = useSafeAreaInsets();
 
@@ -320,7 +374,10 @@ const VendorBusinessInfoUpdatingScreen = ({ navigation }: any) => {
         businessType: "",
         gstNumber: "",
         panNumber: "",
-        workingHours: { openingTime: "", closingTime: "" },
+        workingHours: {
+            openingTime: "",
+            closingTime: "",
+        },
         workingDays: [],
         storeLocationAddress: {
             addressLine1: "",
@@ -335,44 +392,108 @@ const VendorBusinessInfoUpdatingScreen = ({ navigation }: any) => {
         },
     });
 
-    const handleChange = (field: string, value: any, parent?: keyof FormState) => {
+    const handleBackPress = () => {
+        if (step === 2) {
+            setStep(1);
+            return true;
+        }
+
+        if (navigation.canGoBack && navigation.canGoBack()) {
+            navigation.goBack();
+            return true;
+        }
+
+        navigation.navigate("Login");
+        return true;
+    };
+
+    useEffect(() => {
+        const subscription = BackHandler.addEventListener(
+            "hardwareBackPress",
+            handleBackPress
+        );
+
+        return () => subscription.remove();
+    }, [step]);
+
+    const handleChange = (
+        field: string,
+        value: any,
+        parent?: keyof FormState
+    ) => {
         if (parent) {
             setForm((prev) => ({
                 ...prev,
-                [parent]: { ...(prev[parent] as object), [field]: value },
+                [parent]: {
+                    ...(prev[parent] as object),
+                    [field]: value,
+                },
             }));
         } else {
-            setForm((prev) => ({ ...prev, [field]: value }));
+            setForm((prev) => ({
+                ...prev,
+                [field]: value,
+            }));
         }
     };
 
-    const toggleDay = (day: string) =>
+    const toggleDay = (day: string) => {
         setForm((prev) => ({
             ...prev,
             workingDays: prev.workingDays.includes(day)
                 ? prev.workingDays.filter((d) => d !== day)
                 : [...prev.workingDays, day],
         }));
+    };
 
     const validateStep = () => {
         if (step === 1) {
-            const { storeName, businessType, workingHours, workingDays, panNumber } = form;
-            return !!(storeName && businessType && workingHours.openingTime && workingHours.closingTime && workingDays.length && panNumber);
+            const {
+                storeName,
+                businessType,
+                workingHours,
+                workingDays,
+                panNumber,
+            } = form;
+
+            return !!(
+                storeName &&
+                businessType &&
+                workingHours.openingTime &&
+                workingHours.closingTime &&
+                workingDays.length &&
+                panNumber
+            );
         }
+
         const addr = form.storeLocationAddress;
-        return !!(addr.addressLine1 && addr.city && addr.state && addr.postalCode);
+
+        return !!(
+            addr.addressLine1 &&
+            addr.city &&
+            addr.state &&
+            addr.postalCode
+        );
     };
 
     const handleNext = () => {
         if (!validateStep()) {
-            Toast.show({ type: "error", text1: "Validation Error", text2: "Please fill all required fields." });
+            Toast.show({
+                type: "error",
+                text1: "Validation Error",
+                text2: "Please fill all required fields.",
+            });
             return;
         }
+
         setStep(2);
     };
 
     const handleAddressChange = (addr: AddressResult) => {
-        setForm((prev) => ({ ...prev, storeLocationAddress: addr }));
+        setForm((prev) => ({
+            ...prev,
+            storeLocationAddress: addr,
+        }));
     };
 
     const handleSubmit = async () => {
@@ -386,11 +507,17 @@ const VendorBusinessInfoUpdatingScreen = ({ navigation }: any) => {
         }
 
         const addr = form.storeLocationAddress;
-        const { user, token } = await getUserData();
-        console.log(user)
-        console.log("user")
+        const storedData: any = await getUserData();
+
+        const userId =
+            storedData?.user?.user?._id ||
+            storedData?.user?._id ||
+            storedData?.user?.id ||
+            storedData?.userId ||
+            storedData?._id;
+
         const payload = {
-            user: user?.user?._id,
+            user: userId,
             storeName: form.storeName,
             businessType: form.businessType,
             gstNumber: form.gstNumber,
@@ -408,25 +535,18 @@ const VendorBusinessInfoUpdatingScreen = ({ navigation }: any) => {
                 postalCode: addr.postalCode,
                 location: {
                     type: "Point",
-                    coordinates: [
-                        addr.longitude, // ✅ MUST be longitude first
-                        addr.latitude,  // ✅ then latitude
-                    ],
+                    coordinates: [addr.longitude, addr.latitude],
                 },
             },
-
         };
 
-        console.log("FINAL PAYLOAD:", payload);
-
         setLoading(true);
+
         try {
             const res: any = await postRequest(
                 API_ENDPOINTS.VENDORPROFILECREATE,
                 payload
             );
-
-            setLoading(false);
 
             if (res?.success) {
                 const user = res?.data;
@@ -437,36 +557,36 @@ const VendorBusinessInfoUpdatingScreen = ({ navigation }: any) => {
                 Toast.show({
                     type: "success",
                     text1: "Success",
-                    text2: "Logged In successful!",
+                    text2: "Vendor business information updated successfully!",
                 });
 
                 navigation.navigate("Dashboard");
+            } else {
+                Toast.show({
+                    type: "error",
+                    text1: "Error",
+                    text2: res?.message || "Something went wrong.",
+                });
             }
-
         } catch (error: any) {
+            Toast.show({
+                type: "error",
+                text1: "Error",
+                text2:
+                    error?.response?.data?.message ||
+                    error?.message ||
+                    "Something went wrong.",
+            });
+        } finally {
             setLoading(false);
-
-            console.log("API Error:", error);
-
-            const errMsg =
-                error?.response?.data?.message || 
-                error?.response?.data ||            // fallback
-                error?.message ||                   // axios/general error
-                "Something went wrong";
-
-            // 🔥 Show toast
-            // Toast.show({
-            //     type: "error",
-            //     text1: "Error",
-            //     text2: errMsg,
-            // });
-
-            // // 🔥 Optional helper (if you already have this function)
-            showError(error?.response?.data || error);
         }
     };
+
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.scaffoldBg }} edges={["bottom"]}>
+        <SafeAreaView
+            style={{ flex: 1, backgroundColor: colors.scaffoldBg }}
+            edges={["bottom"]}
+        >
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
                 behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -474,142 +594,259 @@ const VendorBusinessInfoUpdatingScreen = ({ navigation }: any) => {
             >
                 <AppBar
                     title="Vendor Registration"
-                    onBack={step === 1 ? () => () => setStep(0) : () => setStep(1)}
+                    onBack={handleBackPress}
                 />
 
                 <ScrollView
                     style={{ flex: 1, backgroundColor: colors.scaffoldBg }}
-                    contentContainerStyle={{ paddingBottom: insets.bottom + 60 }}
+                    contentContainerStyle={{
+                        paddingBottom: insets.bottom + 60,
+                    }}
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                     automaticallyAdjustKeyboardInsets={true}
                 >
-
                     <PageHeader step={step} />
 
                     <View style={localStyles.card}>
-
                         {step === 1 && (
                             <>
-                                <Text style={localStyles.sectionLabel}>Store Info</Text>
+                                <Text style={localStyles.sectionLabel}>
+                                    Store Info
+                                </Text>
 
                                 <FloatingInput
                                     label="Store Name *"
                                     placeholder="e.g. Krishna Traders"
                                     value={form.storeName}
-                                    onChangeText={(t: string) => handleChange("storeName", t)}
+                                    onChangeText={(t: string) =>
+                                        handleChange("storeName", t)
+                                    }
                                     autoCapitalize="words"
                                 />
 
                                 <BusinessTypeSelector
                                     selected={form.businessType}
-                                    onSelect={(val) => handleChange("businessType", val)}
+                                    onSelect={(val) =>
+                                        handleChange("businessType", val)
+                                    }
                                 />
 
                                 <View style={localStyles.divider} />
-                                <Text style={localStyles.sectionLabel}>Schedule</Text>
 
-                                {/* Working Hours */}
+                                <Text style={localStyles.sectionLabel}>
+                                    Schedule
+                                </Text>
+
                                 <View style={inputloginStyles.wrapper}>
-                                    <Text style={inputloginStyles.label}>Working Hours *</Text>
-                                    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+                                    <Text style={inputloginStyles.label}>
+                                        Working Hours *
+                                    </Text>
 
+                                    <View
+                                        style={{
+                                            flexDirection: "row",
+                                            alignItems: "flex-start",
+                                            gap: 10,
+                                        }}
+                                    >
                                         <View style={{ flex: 1 }}>
-                                            <Text style={[inputloginStyles.label, { fontSize: 11, color: colors.placeholder }]}>
+                                            <Text
+                                                style={[
+                                                    inputloginStyles.label,
+                                                    {
+                                                        fontSize: 11,
+                                                        color: colors.placeholder,
+                                                    },
+                                                ]}
+                                            >
                                                 Opens
                                             </Text>
+
                                             <TimePickerField
-                                                value={form.workingHours.openingTime}
-                                                onConfirm={(t) => handleChange("openingTime", t, "workingHours")}
+                                                value={
+                                                    form.workingHours.openingTime
+                                                }
+                                                onConfirm={(t) =>
+                                                    handleChange(
+                                                        "openingTime",
+                                                        t,
+                                                        "workingHours"
+                                                    )
+                                                }
                                                 title="Opening Time"
                                                 placeholder="09:00 AM"
                                             />
                                         </View>
 
-                                        <View style={{ justifyContent: "flex-end", paddingBottom: 14 }}>
-                                            <Text style={{ fontSize: 20, color: colors.placeholder, fontWeight: "300" }}>—</Text>
+                                        <View
+                                            style={{
+                                                justifyContent: "flex-end",
+                                                paddingBottom: 14,
+                                            }}
+                                        >
+                                            <Text
+                                                style={{
+                                                    fontSize: 20,
+                                                    color: colors.placeholder,
+                                                    fontWeight: "300",
+                                                }}
+                                            >
+                                                —
+                                            </Text>
                                         </View>
 
                                         <View style={{ flex: 1 }}>
-                                            <Text style={[inputloginStyles.label, { fontSize: 11, color: colors.placeholder }]}>
+                                            <Text
+                                                style={[
+                                                    inputloginStyles.label,
+                                                    {
+                                                        fontSize: 11,
+                                                        color: colors.placeholder,
+                                                    },
+                                                ]}
+                                            >
                                                 Closes
                                             </Text>
+
                                             <TimePickerField
-                                                value={form.workingHours.closingTime}
-                                                onConfirm={(t) => handleChange("closingTime", t, "workingHours")}
+                                                value={
+                                                    form.workingHours.closingTime
+                                                }
+                                                onConfirm={(t) =>
+                                                    handleChange(
+                                                        "closingTime",
+                                                        t,
+                                                        "workingHours"
+                                                    )
+                                                }
                                                 title="Closing Time"
                                                 placeholder="09:00 PM"
                                             />
                                         </View>
-
                                     </View>
                                 </View>
-                                <DayPicker selected={form.workingDays} onToggle={toggleDay} />
+
+                                <DayPicker
+                                    selected={form.workingDays}
+                                    onToggle={toggleDay}
+                                />
 
                                 <View style={localStyles.divider} />
-                                <Text style={localStyles.sectionLabel}>Tax & Compliance</Text>
+
+                                <Text style={localStyles.sectionLabel}>
+                                    Tax & Compliance
+                                </Text>
 
                                 <FloatingInput
                                     label="GST Number"
                                     placeholder="22AAAAA0000A1Z5"
                                     value={form.gstNumber}
-                                    onChangeText={(t: string) => handleChange("gstNumber", t.toUpperCase())}
+                                    onChangeText={(t: string) =>
+                                        handleChange("gstNumber", t.toUpperCase())
+                                    }
                                     autoCapitalize="characters"
                                 />
+
                                 <FloatingInput
                                     label="PAN Number *"
                                     placeholder="ABCDE1234F"
                                     value={form.panNumber}
-                                    onChangeText={(t: string) => handleChange("panNumber", t.toUpperCase())}
+                                    onChangeText={(t: string) =>
+                                        handleChange("panNumber", t.toUpperCase())
+                                    }
                                     autoCapitalize="characters"
                                 />
 
                                 <TouchableOpacity
-                                    style={[screenStyles.primaryBtn, !validateStep() && screenStyles.primaryBtnDisabled]}
+                                    style={[
+                                        screenStyles.primaryBtn,
+                                        !validateStep() &&
+                                        screenStyles.primaryBtnDisabled,
+                                    ]}
                                     onPress={handleNext}
                                     activeOpacity={0.85}
                                 >
-                                    <Text style={screenStyles.primaryBtnText}>Continue to Address</Text>
-                                    <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 6 }} />
+                                    <Text style={screenStyles.primaryBtnText}>
+                                        Continue to Address
+                                    </Text>
+
+                                    <Ionicons
+                                        name="arrow-forward"
+                                        size={18}
+                                        color="#fff"
+                                        style={{ marginLeft: 6 }}
+                                    />
                                 </TouchableOpacity>
                             </>
                         )}
 
                         {step === 2 && (
                             <>
-                                <Text style={localStyles.sectionLabel}>Store Address</Text>
+                                <Text style={localStyles.sectionLabel}>
+                                    Store Address
+                                </Text>
 
                                 <View style={inputloginStyles.wrapper}>
-                                    <Text style={inputloginStyles.label}>Search or pick on map *</Text>
+                                    <Text style={inputloginStyles.label}>
+                                        Search or pick on map *
+                                    </Text>
+
                                     <GoogleAddressPicker
                                         value={form.storeLocationAddress}
                                         onChange={handleAddressChange}
                                     />
-
                                 </View>
 
                                 <View style={localStyles.divider} />
-                                <Text style={localStyles.sectionLabel}>Confirm Details</Text>
+
+                                <Text style={localStyles.sectionLabel}>
+                                    Confirm Details
+                                </Text>
 
                                 <FloatingInput
                                     label="Address Line 1 *"
                                     placeholder="Shop No., Building, Street"
-                                    value={form.storeLocationAddress.addressLine1}
-                                    onChangeText={(t: string) => handleChange("addressLine1", t, "storeLocationAddress")}
+                                    value={
+                                        form.storeLocationAddress.addressLine1
+                                    }
+                                    onChangeText={(t: string) =>
+                                        handleChange(
+                                            "addressLine1",
+                                            t,
+                                            "storeLocationAddress"
+                                        )
+                                    }
                                     autoCapitalize="words"
                                 />
+
                                 <FloatingInput
                                     label="Address Line 2"
                                     placeholder="Area, Colony (optional)"
-                                    value={form.storeLocationAddress.addressLine2}
-                                    onChangeText={(t: string) => handleChange("addressLine2", t, "storeLocationAddress")}
+                                    value={
+                                        form.storeLocationAddress.addressLine2
+                                    }
+                                    onChangeText={(t: string) =>
+                                        handleChange(
+                                            "addressLine2",
+                                            t,
+                                            "storeLocationAddress"
+                                        )
+                                    }
                                     autoCapitalize="words"
                                 />
+
                                 <FloatingInput
                                     label="Landmark"
                                     placeholder="Near temple, opposite school…"
                                     value={form.storeLocationAddress.landmark}
-                                    onChangeText={(t: string) => handleChange("landmark", t, "storeLocationAddress")}
+                                    onChangeText={(t: string) =>
+                                        handleChange(
+                                            "landmark",
+                                            t,
+                                            "storeLocationAddress"
+                                        )
+                                    }
                                     autoCapitalize="words"
                                 />
 
@@ -618,17 +855,34 @@ const VendorBusinessInfoUpdatingScreen = ({ navigation }: any) => {
                                         <FloatingInput
                                             label="City *"
                                             placeholder="Vadodara"
-                                            value={form.storeLocationAddress.city}
-                                            onChangeText={(t: string) => handleChange("city", t, "storeLocationAddress")}
+                                            value={
+                                                form.storeLocationAddress.city
+                                            }
+                                            onChangeText={(t: string) =>
+                                                handleChange(
+                                                    "city",
+                                                    t,
+                                                    "storeLocationAddress"
+                                                )
+                                            }
                                             autoCapitalize="words"
                                         />
                                     </View>
+
                                     <View style={{ flex: 1 }}>
                                         <FloatingInput
                                             label="State *"
                                             placeholder="Gujarat"
-                                            value={form.storeLocationAddress.state}
-                                            onChangeText={(t: string) => handleChange("state", t, "storeLocationAddress")}
+                                            value={
+                                                form.storeLocationAddress.state
+                                            }
+                                            onChangeText={(t: string) =>
+                                                handleChange(
+                                                    "state",
+                                                    t,
+                                                    "storeLocationAddress"
+                                                )
+                                            }
                                             autoCapitalize="words"
                                         />
                                     </View>
@@ -639,23 +893,45 @@ const VendorBusinessInfoUpdatingScreen = ({ navigation }: any) => {
                                         <FloatingInput
                                             label="Postal Code *"
                                             placeholder="390001"
-                                            value={form.storeLocationAddress.postalCode}
-                                            onChangeText={(t: string) => handleChange("postalCode", t, "storeLocationAddress")}
+                                            value={
+                                                form.storeLocationAddress
+                                                    .postalCode
+                                            }
+                                            onChangeText={(t: string) =>
+                                                handleChange(
+                                                    "postalCode",
+                                                    t,
+                                                    "storeLocationAddress"
+                                                )
+                                            }
                                             keyboardType="numeric"
                                         />
                                     </View>
+
                                     <View style={{ flex: 1 }}>
                                         <FloatingInput
                                             label="Country"
-                                            value={form.storeLocationAddress.country}
-                                            onChangeText={(t: string) => handleChange("country", t, "storeLocationAddress")}
+                                            value={
+                                                form.storeLocationAddress.country
+                                            }
+                                            onChangeText={(t: string) =>
+                                                handleChange(
+                                                    "country",
+                                                    t,
+                                                    "storeLocationAddress"
+                                                )
+                                            }
                                             editable={false}
                                         />
                                     </View>
                                 </View>
 
                                 <TouchableOpacity
-                                    style={[screenStyles.primaryBtn, (loading || !validateStep()) && screenStyles.primaryBtnDisabled]}
+                                    style={[
+                                        screenStyles.primaryBtn,
+                                        (loading || !validateStep()) &&
+                                        screenStyles.primaryBtnDisabled,
+                                    ]}
                                     onPress={handleSubmit}
                                     disabled={loading}
                                     activeOpacity={0.85}
@@ -664,14 +940,25 @@ const VendorBusinessInfoUpdatingScreen = ({ navigation }: any) => {
                                         <ActivityIndicator color="#fff" />
                                     ) : (
                                         <>
-                                            <Text style={screenStyles.primaryBtnText}>Submit & Continue</Text>
-                                            <Ionicons name="checkmark-circle-outline" size={18} color="#fff" style={{ marginLeft: 6 }} />
+                                            <Text
+                                                style={
+                                                    screenStyles.primaryBtnText
+                                                }
+                                            >
+                                                Submit & Continue
+                                            </Text>
+
+                                            <Ionicons
+                                                name="checkmark-circle-outline"
+                                                size={18}
+                                                color="#fff"
+                                                style={{ marginLeft: 6 }}
+                                            />
                                         </>
                                     )}
                                 </TouchableOpacity>
                             </>
                         )}
-
                     </View>
                 </ScrollView>
             </KeyboardAvoidingView>
@@ -689,12 +976,18 @@ const screenStyles = StyleSheet.create({
         alignItems: "center",
         marginTop: 24,
         shadowColor: colors.primary,
-        shadowOffset: { width: 0, height: 4 },
+        shadowOffset: {
+            width: 0,
+            height: 4,
+        },
         shadowOpacity: 0.25,
         shadowRadius: 8,
         elevation: 4,
     },
-    primaryBtnDisabled: { opacity: 0.55, shadowOpacity: 0 },
+    primaryBtnDisabled: {
+        opacity: 0.55,
+        shadowOpacity: 0,
+    },
     primaryBtnText: {
         color: "#fff",
         fontSize: 16,

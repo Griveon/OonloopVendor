@@ -8,7 +8,9 @@ interface ApiError {
 export const showError = (error: ApiError | any) => {
     if (!error) return;
 
-    if (error.error && Array.isArray(error.error)) {
+    console.log("showError called with error:", error);
+
+    if (error?.error && Array.isArray(error.error)) {
         error?.error?.forEach((err: any) => {
             console.log("error.error")
             const msg = `${err?.message}`;
@@ -23,11 +25,19 @@ export const showError = (error: ApiError | any) => {
         });
     }
     // If error is a single message
-    else if (error.message) {
+    else if (error?.response?.data?.message) {
         Toast.show({
             type: 'error',
             text1: 'Error',
-            text2: error.message,
+            text2: error.response.data.message,
+            position: 'top',
+            visibilityTime: 4000,
+        });
+    } else if (error) {
+        Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2: error,
             position: 'top',
             visibilityTime: 4000,
         });

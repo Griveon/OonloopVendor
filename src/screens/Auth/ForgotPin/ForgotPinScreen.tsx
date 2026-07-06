@@ -189,6 +189,7 @@ const ForgotPinScreen = ({ navigation }: any) => {
             const res: any = await postRequest(API_ENDPOINTS.VERIFYWHATSAPPOTP, {
                 mobile,
                 otp,
+                role: 'vendor'
             });
             setLoading(false);
             if (res?.success) {
@@ -237,6 +238,7 @@ const ForgotPinScreen = ({ navigation }: any) => {
             const res: any = await putRequest(API_ENDPOINTS.UPDATEUSERPIN, {
                 mobile: mobile,
                 pin: newPin,
+                role: 'vendor'
             });
             setLoading(false);
             if (res?.success) {
@@ -250,15 +252,17 @@ const ForgotPinScreen = ({ navigation }: any) => {
                     text1: "Success",
                     text2: "Logged In successful!",
                 });
-                Toast.show({ type: "success", text1: "PIN Reset!", text2: "Please log in with your new PIN." });
+                // Toast.show({ type: "success", text1: "PIN Reset!", text2: "Please log in with your new PIN." });
+
+                
 
                 navigation.navigate("Dashboard");
             } else {
-                ToastAndroid.show(res?.message ?? "Failed to reset PIN.", ToastAndroid.LONG);
+                // ToastAndroid.show(res?.message ?? "Failed to reset PIN.", ToastAndroid.LONG);
             }
         } catch {
             setLoading(false);
-            ToastAndroid.show("Something went wrong. Try again.", ToastAndroid.LONG);
+            // ToastAndroid.show("Something went wrong. Try again.", ToastAndroid.LONG);
         }
     };
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View,
     Text,
@@ -15,6 +15,8 @@ import {
     ScrollView,
     Dimensions,
     StyleSheet,
+    NativeSyntheticEvent,
+    NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -95,23 +97,26 @@ const getPrimaryImage = (images: ProductImage[]): string => {
     return primary?.url || images?.[0]?.url || 'https://via.placeholder.com/80x80?text=No+Image';
 };
 
-const getMinMaxPrice = (variants: ProductVariant[]): {
-    minPrice: number; maxPrice: number;
-    minMrp: number; maxMrp: number;
-} => {
+const getMinMaxPrice = (
+    variants: ProductVariant[]
+): { minPrice: number; maxPrice: number; minMrp: number; maxMrp: number } => {
     if (!variants || variants.length === 0)
         return { minPrice: 0, maxPrice: 0, minMrp: 0, maxMrp: 0 };
     const prices = variants.map((v) => v.price ?? 0);
     const mrps = variants.map((v) => (v as any).mrp ?? v.price ?? 0);
     return {
-        minPrice: Math.min(...prices), maxPrice: Math.max(...prices),
-        minMrp: Math.min(...mrps), maxMrp: Math.max(...mrps),
+        minPrice: Math.min(...prices),
+        maxPrice: Math.max(...prices),
+        minMrp: Math.min(...mrps),
+        maxMrp: Math.max(...mrps),
     };
 };
 
 const formatPrice = (price: number): string => `₹${price.toLocaleString('en-IN')}`;
 
-// --- Status Toggle Modal ---
+// ---------------------------------------------------------------------------
+// Status Toggle Modal
+// ---------------------------------------------------------------------------
 const StatusToggleModal = ({
     visible,
     product,
@@ -132,7 +137,12 @@ const StatusToggleModal = ({
         <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
             <Pressable style={modalStyles.overlay} onPress={onClose}>
                 <Pressable style={modalStyles.box} onPress={(e) => e.stopPropagation()}>
-                    <View style={[modalStyles.iconCircle, { backgroundColor: willActivate ? '#DCFCE7' : '#FEE2E2' }]}>
+                    <View
+                        style={[
+                            modalStyles.iconCircle,
+                            { backgroundColor: willActivate ? '#DCFCE7' : '#FEE2E2' },
+                        ]}
+                    >
                         <Ionicons
                             name={willActivate ? 'checkmark-circle-outline' : 'close-circle-outline'}
                             size={32}
@@ -148,11 +158,18 @@ const StatusToggleModal = ({
                             : 'This product will be hidden from customers.'}
                     </Text>
                     <View style={modalStyles.btnRow}>
-                        <TouchableOpacity style={modalStyles.cancelBtn} onPress={onClose} activeOpacity={0.7}>
+                        <TouchableOpacity
+                            style={modalStyles.cancelBtn}
+                            onPress={onClose}
+                            activeOpacity={0.7}
+                        >
                             <Text style={modalStyles.cancelText}>Cancel</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                            style={[modalStyles.confirmBtn, { backgroundColor: willActivate ? '#16A34A' : '#EF4444' }]}
+                            style={[
+                                modalStyles.confirmBtn,
+                                { backgroundColor: willActivate ? '#16A34A' : '#EF4444' },
+                            ]}
                             onPress={() => onConfirm(willActivate)}
                             activeOpacity={0.8}
                             disabled={loading}
@@ -172,7 +189,9 @@ const StatusToggleModal = ({
     );
 };
 
-// --- Quantity Modal ---
+// ---------------------------------------------------------------------------
+// Quantity Modal
+// ---------------------------------------------------------------------------
 const QuantityModal = ({
     visible,
     product,
@@ -190,7 +209,10 @@ const QuantityModal = ({
     const [qty, setQty] = useState('');
 
     useEffect(() => {
-        if (visible) { setType('increase'); setQty(''); }
+        if (visible) {
+            setType('increase');
+            setQty('');
+        }
     }, [visible]);
 
     if (!product) return null;
@@ -204,13 +226,19 @@ const QuantityModal = ({
                     </View>
                     <Text style={modalStyles.title}>Update Stock</Text>
                     <Text style={modalStyles.subtitle}>
-                        Current stock: <Text style={{ fontWeight: '700', color: colors.secondary }}>{product.stock}</Text>
+                        Current stock:{' '}
+                        <Text style={{ fontWeight: '700', color: colors.secondary }}>
+                            {product.stock}
+                        </Text>
                     </Text>
 
                     {/* Toggle */}
                     <View style={modalStyles.toggleRow}>
                         <TouchableOpacity
-                            style={[modalStyles.toggleBtn, type === 'increase' && modalStyles.toggleBtnActive]}
+                            style={[
+                                modalStyles.toggleBtn,
+                                type === 'increase' && modalStyles.toggleBtnActive,
+                            ]}
                             onPress={() => setType('increase')}
                             activeOpacity={0.8}
                         >
@@ -219,12 +247,23 @@ const QuantityModal = ({
                                 size={16}
                                 color={type === 'increase' ? '#fff' : colors.placeholder}
                             />
-                            <Text style={[modalStyles.toggleText, type === 'increase' && modalStyles.toggleTextActive]}>
+                            <Text
+                                style={[
+                                    modalStyles.toggleText,
+                                    type === 'increase' && modalStyles.toggleTextActive,
+                                ]}
+                            >
                                 Increase
                             </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
-                            style={[modalStyles.toggleBtn, type === 'decrease' && { ...modalStyles.toggleBtnActive, backgroundColor: '#EF4444' }]}
+                            style={[
+                                modalStyles.toggleBtn,
+                                type === 'decrease' && {
+                                    ...modalStyles.toggleBtnActive,
+                                    backgroundColor: '#EF4444',
+                                },
+                            ]}
                             onPress={() => setType('decrease')}
                             activeOpacity={0.8}
                         >
@@ -233,7 +272,12 @@ const QuantityModal = ({
                                 size={16}
                                 color={type === 'decrease' ? '#fff' : colors.placeholder}
                             />
-                            <Text style={[modalStyles.toggleText, type === 'decrease' && modalStyles.toggleTextActive]}>
+                            <Text
+                                style={[
+                                    modalStyles.toggleText,
+                                    type === 'decrease' && modalStyles.toggleTextActive,
+                                ]}
+                            >
                                 Decrease
                             </Text>
                         </TouchableOpacity>
@@ -243,7 +287,9 @@ const QuantityModal = ({
                     <View style={modalStyles.qtyInputWrapper}>
                         <TouchableOpacity
                             style={modalStyles.qtyStepBtn}
-                            onPress={() => setQty((prev) => String(Math.max(1, parseInt(prev || '1') - 1)))}
+                            onPress={() =>
+                                setQty((prev) => String(Math.max(1, parseInt(prev || '1') - 1)))
+                            }
                         >
                             <Ionicons name="remove" size={20} color={colors.primary} />
                         </TouchableOpacity>
@@ -264,7 +310,11 @@ const QuantityModal = ({
                     </View>
 
                     <View style={modalStyles.btnRow}>
-                        <TouchableOpacity style={modalStyles.cancelBtn} onPress={onClose} activeOpacity={0.7}>
+                        <TouchableOpacity
+                            style={modalStyles.cancelBtn}
+                            onPress={onClose}
+                            activeOpacity={0.7}
+                        >
                             <Text style={modalStyles.cancelText}>Cancel</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
@@ -385,8 +435,9 @@ const modalStyles = StyleSheet.create({
     },
 });
 
-// --- Product Card ---
-// --- Product Card ---
+// ---------------------------------------------------------------------------
+// Product Card
+// ---------------------------------------------------------------------------
 const ProductCard = ({
     product,
     onView,
@@ -402,105 +453,121 @@ const ProductCard = ({
 }) => {
     const imageUrl = getPrimaryImage(product.images);
     const { minPrice, maxPrice, minMrp, maxMrp } = getMinMaxPrice(product.variants);
-    const priceLabel = minPrice === maxPrice
-        ? formatPrice(minPrice)
-        : `${formatPrice(minPrice)} – ${formatPrice(maxPrice)}`;
-    const mrpLabel = minMrp === maxMrp
-        ? formatPrice(minMrp)
-        : `${formatPrice(minMrp)} – ${formatPrice(maxMrp)}`;
+    const priceLabel =
+        minPrice === maxPrice
+            ? formatPrice(minPrice)
+            : `${formatPrice(minPrice)} – ${formatPrice(maxPrice)}`;
+    const mrpLabel =
+        minMrp === maxMrp
+            ? formatPrice(minMrp)
+            : `${formatPrice(minMrp)} – ${formatPrice(maxMrp)}`;
     const gstPercent = product.gst?.gstPercent;
-    const totalStock = product.stock ?? product.variants?.reduce((sum, v) => sum + v.stock, 0) ?? 0;
+    const totalStock =
+        product.stock ?? product.variants?.reduce((sum, v) => sum + v.stock, 0) ?? 0;
     const variantCount = product.variants?.length ?? 0;
-    const uniqueColors = [...new Set(product.variants?.map((v) => v.attributes?.color).filter(Boolean))];
+    const uniqueColors = [
+        ...new Set(product.variants?.map((v) => v.attributes?.color).filter(Boolean)),
+    ];
 
     return (
-        <View style={styles.productCard}>
+        <View style={cardStyles.productCard}>
             {/* Product Image */}
-            <View style={styles.imageContainer}>
-                <Image source={{ uri: imageUrl }} style={styles.productImage} />
+            <View style={cardStyles.imageContainer}>
+                <Image source={{ uri: imageUrl }} style={cardStyles.productImage} />
                 {product.isFeatured && (
-                    <View style={styles.featuredOverlay}>
+                    <View style={cardStyles.featuredOverlay}>
                         <Ionicons name="star" size={9} color="#FFFFFF" />
                     </View>
                 )}
                 {product.isTrending && (
-                    <View style={styles.trendingOverlay}>
+                    <View style={cardStyles.trendingOverlay}>
                         <Ionicons name="trending-up" size={9} color="#FFFFFF" />
                     </View>
                 )}
             </View>
 
             {/* Product Info */}
-            <View style={styles.productInfo}>
-                {/* Status Row — same as before */}
-                <View style={styles.statusRow}>
-                    <View style={[styles.statusBadge, { backgroundColor: product.isActive ? '#DCFCE7' : '#FEE2E2' }]}>
-                        <View style={[styles.statusDot, { backgroundColor: product.isActive ? '#22C55E' : '#EF4444' }]} />
-                        <Text style={[styles.statusText, { color: product.isActive ? '#16A34A' : '#DC2626' }]}>
+            <View style={cardStyles.productInfo}>
+                <View style={cardStyles.statusRow}>
+                    <View
+                        style={[
+                            cardStyles.statusBadge,
+                            { backgroundColor: product.isActive ? '#DCFCE7' : '#FEE2E2' },
+                        ]}
+                    >
+                        <View
+                            style={[
+                                cardStyles.statusDot,
+                                { backgroundColor: product.isActive ? '#22C55E' : '#EF4444' },
+                            ]}
+                        />
+                        <Text
+                            style={[
+                                cardStyles.statusText,
+                                { color: product.isActive ? '#16A34A' : '#DC2626' },
+                            ]}
+                        >
                             {product.isActive ? 'Active' : 'Inactive'}
                         </Text>
                     </View>
                     {product.returnable && (
-                        <View style={styles.returnableBadge}>
+                        <View style={cardStyles.returnableBadge}>
                             <Ionicons name="return-down-back-outline" size={10} color="#6366F1" />
-                            <Text style={styles.returnableText}>Returnable</Text>
+                            <Text style={cardStyles.returnableText}>Returnable</Text>
                         </View>
                     )}
                 </View>
 
-                {/* Name */}
-                <Text style={styles.productName} numberOfLines={2}>
+                <Text style={cardStyles.productName} numberOfLines={2}>
                     {product.name}
                 </Text>
 
-                {/* Price */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-                    <Text style={styles.priceText}>{priceLabel}</Text>
+                    <Text style={cardStyles.priceText}>{priceLabel}</Text>
                     {minMrp > 0 && minMrp !== minPrice && (
-                        <Text style={styles.mrpText}>MRP {mrpLabel}</Text>
+                        <Text style={cardStyles.mrpText}>MRP {mrpLabel}</Text>
                     )}
                 </View>
 
-                {/* Variant colors */}
                 {uniqueColors.length > 0 && (
-                    <View style={styles.colorsRow}>
+                    <View style={cardStyles.colorsRow}>
                         {uniqueColors.slice(0, 4).map((color, i) => (
-                            <View key={i} style={[styles.colorDot, getColorStyle(color as string)]} />
+                            <View key={i} style={[cardStyles.colorDot, getColorStyle(color as string)]} />
                         ))}
                         {uniqueColors.length > 4 && (
-                            <Text style={styles.moreColors}>+{uniqueColors.length - 4}</Text>
+                            <Text style={cardStyles.moreColors}>+{uniqueColors.length - 4}</Text>
                         )}
                     </View>
                 )}
 
-                {/* Meta Row — same as before */}
-                <View style={styles.metaRow}>
-                    <View style={styles.metaChip}>
+                <View style={cardStyles.metaRow}>
+                    <View style={cardStyles.metaChip}>
                         <Ionicons name="layers-outline" size={11} color={colors.placeholder} />
-                        <Text style={styles.metaChipText}>{variantCount} variant{variantCount !== 1 ? 's' : ''}</Text>
+                        <Text style={cardStyles.metaChipText}>
+                            {variantCount} variant{variantCount !== 1 ? 's' : ''}
+                        </Text>
                     </View>
-                    <View style={styles.metaChip}>
+                    <View style={cardStyles.metaChip}>
                         <Ionicons name="cube-outline" size={11} color={colors.placeholder} />
-                        <Text style={styles.metaChipText}>{totalStock} stock</Text>
+                        <Text style={cardStyles.metaChipText}>{totalStock} stock</Text>
                     </View>
                     {gstPercent != null && gstPercent > 0 && (
-                        <View style={styles.metaChip}>
-                            <Text style={styles.metaChipText}>GST {gstPercent}%</Text>
+                        <View style={cardStyles.metaChip}>
+                            <Text style={cardStyles.metaChipText}>GST {gstPercent}%</Text>
                         </View>
                     )}
                 </View>
 
-                {/* Actions — same as before */}
-                <View style={styles.actionRow}>
+                <View style={cardStyles.actionRow}>
                     <TouchableOpacity
-                        style={[styles.actionBtn, styles.viewBtn]}
+                        style={[cardStyles.actionBtn, cardStyles.viewBtn]}
                         onPress={() => onView?.(product)}
                         activeOpacity={0.7}
                     >
                         <Ionicons name="eye-outline" size={15} color={colors.primary} />
                     </TouchableOpacity>
                     <TouchableOpacity
-                        style={[styles.actionBtn, styles.editBtn]}
+                        style={[cardStyles.actionBtn, cardStyles.editBtn]}
                         onPress={() => onEdit?.(product)}
                         activeOpacity={0.7}
                     >
@@ -509,12 +576,11 @@ const ProductCard = ({
                 </View>
             </View>
 
-            {/* ── Right side: two icon buttons only ── */}
-            <View style={styles.rightActions}>
-                {/* Status toggle icon button */}
+            {/* Right icon buttons */}
+            <View style={cardStyles.rightActions}>
                 <TouchableOpacity
                     style={[
-                        styles.rightIconBtn,
+                        cardStyles.rightIconBtn,
                         { backgroundColor: product.isActive ? '#DCFCE7' : '#FEE2E2' },
                     ]}
                     onPress={() => onToggleStatus?.(product)}
@@ -526,10 +592,8 @@ const ProductCard = ({
                         color={product.isActive ? '#16A34A' : '#DC2626'}
                     />
                 </TouchableOpacity>
-
-                {/* Stock edit icon button */}
                 <TouchableOpacity
-                    style={[styles.rightIconBtn, { backgroundColor: '#EFF6FF' }]}
+                    style={[cardStyles.rightIconBtn, { backgroundColor: '#EFF6FF' }]}
                     onPress={() => onUpdateQty?.(product)}
                     activeOpacity={0.75}
                 >
@@ -553,7 +617,118 @@ const getColorStyle = (colorName: string): object => ({
     borderWidth: colorName?.toLowerCase() === 'white' ? 1 : 0,
 });
 
-// --- Product Detail Bottom Sheet ---
+// ---------------------------------------------------------------------------
+// Image Gallery — standalone component (no nested ScrollView conflict)
+// ---------------------------------------------------------------------------
+const GALLERY_HEIGHT = 270;
+const THUMB_SIZE = 56;
+const THUMB_GAP = 6;
+
+const ImageGallery = ({
+    images,
+    badges,
+}: {
+    images: ProductImage[];
+    badges?: React.ReactNode;
+}) => {
+    const [selectedIndex, setSelectedIndex] = useState(0);
+
+    useEffect(() => {
+        setSelectedIndex(0);
+    }, [images]);
+
+    if (!images?.length) return null;
+
+    return (
+        <View style={galleryStyles.container}>
+            <View style={galleryStyles.imageWrapper}>
+                <Image
+                    source={{ uri: images[selectedIndex]?.url }}
+                    style={galleryStyles.mainImage}
+                />
+
+                <View style={galleryStyles.badges}>
+                    {badges}
+                </View>
+            </View>
+
+            <FlatList
+                horizontal
+                data={images}
+                keyExtractor={(_, i) => i.toString()}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={galleryStyles.thumbContainer}
+                renderItem={({ item, index }) => (
+                    <TouchableOpacity
+                        onPress={() => setSelectedIndex(index)}
+                    >
+                        <Image
+                            source={{ uri: item.url }}
+                            style={[
+                                galleryStyles.thumb,
+                                selectedIndex === index &&
+                                galleryStyles.thumbActive,
+                            ]}
+                        />
+                    </TouchableOpacity>
+                )}
+            />
+        </View>
+    );
+};
+
+const galleryStyles = StyleSheet.create({
+    container: {
+        backgroundColor: '#fff',
+        paddingBottom: 12,
+    },
+
+    imageWrapper: {
+        position: 'relative',
+    },
+
+    mainImage: {
+        width: '100%',
+        height: 260,
+        resizeMode: 'cover',
+    },
+
+    badges: {
+        position: 'absolute',
+        top: 12,
+        left: 12,
+        flexDirection: 'row',
+        gap: 8,
+    },
+
+    thumbContainer: {
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        gap: 10,
+    },
+
+    thumb: {
+        width: 64,
+        height: 64,
+        borderRadius: 10,
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+
+    thumbActive: {
+        borderColor: colors.primary,
+    },
+});
+// ---------------------------------------------------------------------------
+// Product Details Bottom Sheet
+// Follows DropdownPicker pattern:
+//   • TouchableOpacity backdrop (activeOpacity=1) dismisses on tap-outside
+//   • animationType="slide" — native, reliable, no Animated.Value needed
+//   • Fixed height: SCREEN_HEIGHT * 0.85 so ScrollView always has a bound
+//   • Gallery stays ABOVE the ScrollView — zero conflict
+// ---------------------------------------------------------------------------
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
 const ProductDetailsSheet = ({
     product,
     visible,
@@ -563,259 +738,591 @@ const ProductDetailsSheet = ({
     visible: boolean;
     onClose: () => void;
 }) => {
-    const translateY = useState(new Animated.Value(600))[0];
     const [activeVariant, setActiveVariant] = useState<ProductVariant | null>(null);
-    const [activeImageIndex, setActiveImageIndex] = useState(0);
+    const [galleryImages, setGalleryImages] = useState<ProductImage[]>([]);
 
+    // Reset state each time a new product is shown
     useEffect(() => {
         if (visible && product) {
-            setActiveVariant(product.variants?.[0] ?? null);
-            setActiveImageIndex(0);
-            translateY.setValue(600);
-            Animated.spring(translateY, {
-                toValue: 0,
-                useNativeDriver: true,
-                friction: 8,
-                tension: 40,
-            }).start();
+            const firstVariant = product.variants?.[0] ?? null;
+            setActiveVariant(firstVariant);
+            const imgs =
+                firstVariant?.images?.length ? firstVariant.images : product.images ?? [];
+            setGalleryImages(imgs);
         }
     }, [visible, product]);
 
     if (!product) return null;
 
-    const displayImages =
-        activeVariant?.images?.length ? activeVariant.images : product.images;
-    const currentImage = getPrimaryImage(displayImages);
-
     const { minPrice, maxPrice, minMrp, maxMrp } = getMinMaxPrice(product.variants);
-    const priceLabel = minPrice === maxPrice
-        ? formatPrice(minPrice)
-        : `${formatPrice(minPrice)} – ${formatPrice(maxPrice)}`;
-    const mrpLabel = minMrp === maxMrp
-        ? formatPrice(minMrp)
-        : `${formatPrice(minMrp)} – ${formatPrice(maxMrp)}`;
+    const priceLabel =
+        minPrice === maxPrice
+            ? formatPrice(minPrice)
+            : `${formatPrice(minPrice)} – ${formatPrice(maxPrice)}`;
+    const mrpLabel =
+        minMrp === maxMrp
+            ? formatPrice(minMrp)
+            : `${formatPrice(minMrp)} – ${formatPrice(maxMrp)}`;
 
-    const uniqueSizes = [...new Set(product.variants?.map((v) => v.attributes?.size).filter(Boolean))];
-    const uniqueColors = [...new Set(product.variants?.map((v) => v.attributes?.color).filter(Boolean))];
+    const uniqueSizes = [
+        ...new Set(product.variants?.map((v) => v.attributes?.size).filter(Boolean)),
+    ];
+    const uniqueColors = [
+        ...new Set(product.variants?.map((v) => v.attributes?.color).filter(Boolean)),
+    ];
+
+    const handleVariantPress = (variant: ProductVariant) => {
+        setActiveVariant(variant);
+        const imgs = variant.images?.length ? variant.images : product.images ?? [];
+        setGalleryImages(imgs);
+    };
+
+    const badges = (
+        <>
+            {product.isActive && (
+                <View style={sheetStyles.badge}>
+                    <Text style={sheetStyles.badgeText}>Active</Text>
+                </View>
+            )}
+            {product.isFeatured && (
+                <View style={[sheetStyles.badge, { backgroundColor: colors.warning }]}>
+                    <Ionicons name="star" size={10} color="#FFF" />
+                    <Text style={sheetStyles.badgeText}>Featured</Text>
+                </View>
+            )}
+            {product.isTrending && (
+                <View style={[sheetStyles.badge, { backgroundColor: '#6366F1' }]}>
+                    <Ionicons name="trending-up" size={10} color="#FFF" />
+                    <Text style={sheetStyles.badgeText}>Trending</Text>
+                </View>
+            )}
+        </>
+    );
 
     return (
-        <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-            <Pressable style={styles.overlay} onPress={onClose}>
-                <Animated.View style={[styles.bottomSheet, { transform: [{ translateY }] }]}>
-                    <Pressable onPress={(e) => e.stopPropagation()}>
-                        {/* Handle */}
-                        <View style={styles.sheetHandleRow}>
-                            <View style={styles.sheetHandle} />
-                            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-                                <Ionicons name="close" size={22} color={colors.secondary} />
+        <Modal
+            visible={visible}
+            transparent
+            animationType="slide"          // ← same as DropdownPicker: native slide, no JS animation
+            onRequestClose={onClose}
+        >
+            {/* ── Backdrop: tap outside → close ── */}
+            <View style={sheetStyles.backdrop}>
+                <Pressable
+                    style={StyleSheet.absoluteFill}
+                    onPress={onClose}
+                />
+                <View
+                    style={[
+                        sheetStyles.sheet,
+                        { height: SCREEN_HEIGHT * 0.85 }
+                    ]}
+                >
+                    {/* ── Sheet: stops tap propagation to backdrop ── */}
+                    <TouchableOpacity
+                        activeOpacity={1}
+                        style={[sheetStyles.sheet, { height: SCREEN_HEIGHT * 0.85 }]}
+                        onPress={() => { }} // absorb taps so they don't hit backdrop
+                    >
+                        {/* ── Header ── */}
+                        <View style={sheetStyles.header}>
+                            <View style={sheetStyles.handle} />
+                            <Text style={sheetStyles.headerTitle} numberOfLines={1}>
+                                {product.name}
+                            </Text>
+                            <TouchableOpacity onPress={onClose} style={sheetStyles.closeBtn}>
+                                <Ionicons name="close-outline" size={24} color={colors.secondary} />
                             </TouchableOpacity>
                         </View>
 
-                        <ScrollView showsVerticalScrollIndicator={false}>
-                            {/* Hero Image */}
-                            <View style={styles.sheetHero}>
-                                <Image source={{ uri: currentImage }} style={styles.sheetHeroImage} />
-                                <View style={styles.sheetBadgeRow}>
-                                    {product.isActive && (
-                                        <View style={[styles.sheetBadge, { backgroundColor: '#22C55E' }]}>
-                                            <Text style={styles.sheetBadgeText}>Active</Text>
-                                        </View>
-                                    )}
-                                    {product.isFeatured && (
-                                        <View style={[styles.sheetBadge, { backgroundColor: colors.warning }]}>
-                                            <Ionicons name="star" size={10} color="#FFF" />
-                                            <Text style={styles.sheetBadgeText}>Featured</Text>
-                                        </View>
-                                    )}
-                                    {product.isTrending && (
-                                        <View style={[styles.sheetBadge, { backgroundColor: '#6366F1' }]}>
-                                            <Ionicons name="trending-up" size={10} color="#FFF" />
-                                            <Text style={styles.sheetBadgeText}>Trending</Text>
-                                        </View>
-                                    )}
-                                </View>
-                                {displayImages.length > 1 && (
-                                    <View style={styles.imageDots}>
-                                        {displayImages.map((_, i) => (
-                                            <View
-                                                key={i}
-                                                style={[styles.imageDot, i === activeImageIndex && styles.imageDotActive]}
-                                            />
-                                        ))}
-                                    </View>
+                        {/* ── Gallery: fixed block, ABOVE ScrollView ── */}
+                        <ImageGallery images={galleryImages} badges={badges} />
+
+                        {/* ── Scrollable body ── */}
+                        <ScrollView
+                            style={sheetStyles.scrollArea}
+                            contentContainerStyle={sheetStyles.body}
+                            showsVerticalScrollIndicator={false}
+                            keyboardShouldPersistTaps="handled"
+                            nestedScrollEnabled
+                            bounces={false}
+                        >
+                            {/* Name + price */}
+                            <Text style={sheetStyles.name}>{product.name}</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+                                <Text style={sheetStyles.price}>{priceLabel}</Text>
+                                {minMrp > 0 && minMrp !== minPrice && (
+                                    <Text style={sheetStyles.mrp}>MRP {mrpLabel}</Text>
                                 )}
                             </View>
 
-                            <View style={styles.sheetBody}>
-                                <Text style={styles.sheetName}>{product.name}</Text>
-                                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
-                                    <Text style={styles.sheetPrice}>{priceLabel}</Text>
-                                    {minMrp > 0 && minMrp !== minPrice && (
-                                        <Text style={styles.sheetMrp}>MRP {mrpLabel}</Text>
-                                    )}
-                                </View>
+                            {product.description ? (
+                                <Text style={sheetStyles.desc} numberOfLines={4}>
+                                    {product.description}
+                                </Text>
+                            ) : null}
 
-                                {product.description && (
-                                    <Text style={styles.sheetDesc} numberOfLines={3}>
-                                        {product.description}
+                            {/* Stats */}
+                            <View style={sheetStyles.statsRow}>
+                                <View style={sheetStyles.statBox}>
+                                    <Ionicons name="cube-outline" size={20} color={colors.primary} />
+                                    <Text style={sheetStyles.statVal}>{product.stock}</Text>
+                                    <Text style={sheetStyles.statLabel}>In Stock</Text>
+                                </View>
+                                <View style={sheetStyles.statDivider} />
+                                <View style={sheetStyles.statBox}>
+                                    <Ionicons name="layers-outline" size={20} color="#6366F1" />
+                                    <Text style={sheetStyles.statVal}>{product.variants?.length ?? 0}</Text>
+                                    <Text style={sheetStyles.statLabel}>Variants</Text>
+                                </View>
+                                <View style={sheetStyles.statDivider} />
+                                <View style={sheetStyles.statBox}>
+                                    <Ionicons name="pricetag-outline" size={20} color={colors.warning} />
+                                    <Text style={sheetStyles.statVal}>
+                                        {product.gst?.gstPercent ? `${product.gst.gstPercent}%` : '—'}
                                     </Text>
-                                )}
-
-                                {/* Stats */}
-                                <View style={styles.statsRow}>
-                                    <View style={styles.statBox}>
-                                        <Ionicons name="cube-outline" size={20} color={colors.primary} />
-                                        <Text style={styles.statVal}>{product.stock}</Text>
-                                        <Text style={styles.statLabel}>In Stock</Text>
-                                    </View>
-                                    <View style={styles.statDivider} />
-                                    <View style={styles.statBox}>
-                                        <Ionicons name="layers-outline" size={20} color="#6366F1" />
-                                        <Text style={styles.statVal}>{product.variants?.length ?? 0}</Text>
-                                        <Text style={styles.statLabel}>Variants</Text>
-                                    </View>
-                                    <View style={styles.statDivider} />
-                                    <View style={styles.statBox}>
-                                        <Ionicons name="pricetag-outline" size={20} color={colors.warning} />
-                                        <Text style={styles.statVal}>
-                                            {product.gst?.gstPercent ? `${product.gst.gstPercent}%` : '—'}
-                                        </Text>
-                                        <Text style={styles.statLabel}>GST</Text>
-                                    </View>
+                                    <Text style={sheetStyles.statLabel}>GST</Text>
                                 </View>
+                            </View>
 
-                                {/* Sizes */}
-                                {uniqueSizes.length > 0 && (
-                                    <View style={styles.sheetSection}>
-                                        <Text style={styles.sheetSectionTitle}>Available Sizes</Text>
-                                        <View style={styles.sizeRow}>
-                                            {uniqueSizes.map((size, i) => (
-                                                <View key={i} style={styles.sizeChip}>
-                                                    <Text style={styles.sizeChipText}>{size}</Text>
-                                                </View>
-                                            ))}
-                                        </View>
-                                    </View>
-                                )}
-
-                                {/* Colors */}
-                                {uniqueColors.length > 0 && (
-                                    <View style={styles.sheetSection}>
-                                        <Text style={styles.sheetSectionTitle}>Available Colors</Text>
-                                        <View style={styles.colorRow}>
-                                            {uniqueColors.map((color, i) => (
-                                                <View key={i} style={styles.colorItem}>
-                                                    <View style={[styles.colorCircle, getColorStyle(color as string)]} />
-                                                    <Text style={styles.colorLabel}>{color}</Text>
-                                                </View>
-                                            ))}
-                                        </View>
-                                    </View>
-                                )}
-
-                                {/* Variants */}
-                                {product.variants?.length > 0 && (
-                                    <View style={styles.sheetSection}>
-                                        <Text style={styles.sheetSectionTitle}>Variants</Text>
-                                        {product.variants.map((variant) => (
-                                            <TouchableOpacity
-                                                key={variant._id}
-                                                style={[
-                                                    styles.variantRow,
-                                                    activeVariant?._id === variant._id && styles.variantRowActive,
-                                                ]}
-                                                onPress={() => setActiveVariant(variant)}
-                                                activeOpacity={0.7}
-                                            >
-                                                <View style={styles.variantLeft}>
-                                                    {variant.images?.[0]?.url ? (
-                                                        <Image
-                                                            source={{ uri: variant.images[0].url }}
-                                                            style={styles.variantThumb}
-                                                        />
-                                                    ) : (
-                                                        <View style={[styles.variantThumb, { backgroundColor: '#F3F4F6' }]} />
-                                                    )}
-                                                    <View>
-                                                        <Text style={styles.variantSku}>{variant.sku}</Text>
-                                                        <Text style={styles.variantAttrs}>
-                                                            {Object.entries(variant.attributes)
-                                                                .map(([k, v]) => `${k}: ${v}`)
-                                                                .join('  •  ')}
-                                                        </Text>
-                                                    </View>
-                                                </View>
-                                                <View style={styles.variantRight}>
-                                                    <Text style={styles.variantPrice}>{formatPrice(variant.price)}</Text>
-                                                    {variant.mrp > 0 && variant.mrp !== variant.price && (
-                                                        <Text style={styles.variantMrp}>MRP {formatPrice(variant.mrp)}</Text>
-                                                    )}
-                                                    <Text style={styles.variantStock}>{variant.stock} pcs</Text>
-                                                </View>
-                                            </TouchableOpacity>
+                            {/* Sizes */}
+                            {uniqueSizes.length > 0 && (
+                                <View style={sheetStyles.section}>
+                                    <Text style={sheetStyles.sectionTitle}>Available Sizes</Text>
+                                    <View style={sheetStyles.sizeRow}>
+                                        {uniqueSizes.map((size, i) => (
+                                            <View key={i} style={sheetStyles.sizeChip}>
+                                                <Text style={sheetStyles.sizeChipText}>{size}</Text>
+                                            </View>
                                         ))}
                                     </View>
-                                )}
-
-                                {/* Product Attributes */}
-                                {product.attributes && Object.keys(product.attributes).length > 0 && (
-                                    <View style={styles.sheetSection}>
-                                        <Text style={styles.sheetSectionTitle}>Product Details</Text>
-                                        <View style={styles.attributesGrid}>
-                                            {Object.entries(product.attributes)
-                                                .filter(([k]) => k !== 'brand')
-                                                .map(([key, value], i) => (
-                                                    <View key={i} style={styles.attrItem}>
-                                                        <Text style={styles.attrKey}>
-                                                            {key.charAt(0).toUpperCase() + key.slice(1)}
-                                                        </Text>
-                                                        <Text style={styles.attrValue}>{String(value)}</Text>
-                                                    </View>
-                                                ))}
-                                        </View>
-                                    </View>
-                                )}
-
-                                {/* GST Info */}
-                                {product.gst && (product.gst.hsnCode || product.gst.gstPercent) && (
-                                    <View style={styles.gstBox}>
-                                        <View style={styles.gstRow}>
-                                            <Text style={styles.gstLabel}>HSN Code</Text>
-                                            <Text style={styles.gstValue}>{product.gst.hsnCode ?? '—'}</Text>
-                                        </View>
-                                        <View style={styles.gstRow}>
-                                            <Text style={styles.gstLabel}>GST %</Text>
-                                            <Text style={styles.gstValue}>{product.gst.gstPercent ?? 0}%</Text>
-                                        </View>
-                                        <View style={styles.gstRow}>
-                                            <Text style={styles.gstLabel}>Price incl. GST</Text>
-                                            <Text style={[styles.gstValue, { color: colors.primary, fontWeight: '700' }]}>
-                                                {formatPrice(product.gst.priceIncludingGST ?? 0)}
-                                            </Text>
-                                        </View>
-                                    </View>
-                                )}
-
-                                {/* Meta */}
-                                <View style={styles.metaFooter}>
-                                    <Text style={styles.metaFooterText}>
-                                        Created: {new Date(product.createdAt).toLocaleDateString('en-IN')}
-                                    </Text>
-                                    <Text style={styles.metaFooterText}>
-                                        Updated: {new Date(product.updatedAt).toLocaleDateString('en-IN')}
-                                    </Text>
                                 </View>
+                            )}
+
+                            {/* Colors */}
+                            {uniqueColors.length > 0 && (
+                                <View style={sheetStyles.section}>
+                                    <Text style={sheetStyles.sectionTitle}>Available Colors</Text>
+                                    <View style={sheetStyles.colorRow}>
+                                        {uniqueColors.map((color, i) => (
+                                            <View key={i} style={sheetStyles.colorItem}>
+                                                <View style={[sheetStyles.colorCircle, getColorStyle(color as string)]} />
+                                                <Text style={sheetStyles.colorLabel}>{color}</Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                </View>
+                            )}
+
+                            {/* Variants */}
+                            {product.variants?.length > 0 && (
+                                <View style={sheetStyles.section}>
+                                    <Text style={sheetStyles.sectionTitle}>Variants</Text>
+                                    {product.variants.map((variant) => (
+                                        <TouchableOpacity
+                                            key={variant._id}
+                                            style={[
+                                                sheetStyles.variantRow,
+                                                activeVariant?._id === variant._id && sheetStyles.variantRowActive,
+                                            ]}
+                                            onPress={() => handleVariantPress(variant)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <View style={sheetStyles.variantLeft}>
+                                                {variant.images?.[0]?.url ? (
+                                                    <Image
+                                                        source={{ uri: variant.images[0].url }}
+                                                        style={sheetStyles.variantThumb}
+                                                    />
+                                                ) : (
+                                                    <View style={[sheetStyles.variantThumb, { backgroundColor: '#F3F4F6' }]} />
+                                                )}
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={sheetStyles.variantSku}>{variant.sku}</Text>
+                                                    <Text style={sheetStyles.variantAttrs} numberOfLines={1}>
+                                                        {Object.entries(variant.attributes)
+                                                            .map(([k, v]) => `${k}: ${v}`)
+                                                            .join('  •  ')}
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                            <View style={sheetStyles.variantRight}>
+                                                <Text style={sheetStyles.variantPrice}>{formatPrice(variant.price)}</Text>
+                                                {variant.mrp > 0 && variant.mrp !== variant.price && (
+                                                    <Text style={sheetStyles.variantMrp}>MRP {formatPrice(variant.mrp)}</Text>
+                                                )}
+                                                <Text style={sheetStyles.variantStock}>{variant.stock} pcs</Text>
+                                            </View>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            )}
+
+                            {/* Product Attributes */}
+                            {product.attributes && Object.keys(product.attributes).length > 0 && (
+                                <View style={sheetStyles.section}>
+                                    <Text style={sheetStyles.sectionTitle}>Product Details</Text>
+                                    <View style={sheetStyles.attributesGrid}>
+                                        {Object.entries(product.attributes)
+                                            .filter(([k]) => k !== 'brand')
+                                            .map(([key, value], i) => (
+                                                <View key={i} style={sheetStyles.attrItem}>
+                                                    <Text style={sheetStyles.attrKey}>
+                                                        {key.charAt(0).toUpperCase() + key.slice(1)}
+                                                    </Text>
+                                                    <Text style={sheetStyles.attrValue}>{String(value)}</Text>
+                                                </View>
+                                            ))}
+                                    </View>
+                                </View>
+                            )}
+
+                            {/* GST */}
+                            {product.gst && (product.gst.hsnCode || product.gst.gstPercent) && (
+                                <View style={sheetStyles.gstBox}>
+                                    <View style={sheetStyles.gstRow}>
+                                        <Text style={sheetStyles.gstLabel}>HSN Code</Text>
+                                        <Text style={sheetStyles.gstValue}>{product.gst.hsnCode ?? '—'}</Text>
+                                    </View>
+                                    <View style={sheetStyles.gstRow}>
+                                        <Text style={sheetStyles.gstLabel}>GST %</Text>
+                                        <Text style={sheetStyles.gstValue}>{product.gst.gstPercent ?? 0}%</Text>
+                                    </View>
+                                    <View style={sheetStyles.gstRow}>
+                                        <Text style={sheetStyles.gstLabel}>Price incl. GST</Text>
+                                        <Text style={[sheetStyles.gstValue, { color: colors.primary, fontWeight: '700' }]}>
+                                            {formatPrice(product.gst.priceIncludingGST ?? 0)}
+                                        </Text>
+                                    </View>
+                                </View>
+                            )}
+
+                            {/* Meta footer */}
+                            <View style={sheetStyles.metaFooter}>
+                                <Text style={sheetStyles.metaText}>
+                                    Created: {new Date(product.createdAt).toLocaleDateString('en-IN')}
+                                </Text>
+                                <Text style={sheetStyles.metaText}>
+                                    Updated: {new Date(product.updatedAt).toLocaleDateString('en-IN')}
+                                </Text>
                             </View>
                         </ScrollView>
-                    </Pressable>
-                </Animated.View>
-            </Pressable>
+                    </TouchableOpacity>
+
+                </View>
+            </View>
         </Modal>
     );
 };
 
-// --- Main Screen ---
-// --- Main Screen ---
+const sheetStyles = StyleSheet.create({
+    // ── Same backdrop pattern as DropdownPicker ──
+    backdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.45)',
+        justifyContent: 'flex-end',
+    },
+    sheet: {
+        backgroundColor: colors.scaffoldBg,
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        overflow: 'hidden',
+        paddingBottom: 0,
+    },
+    // ── Header: same pattern as DropdownPicker sheetHeader ──
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingTop: 14,
+        paddingBottom: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.formBorder,
+        gap: 10,
+    },
+    handle: {
+        // Centered drag indicator above the header row
+        width: 36,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: '#D1D5DB',
+        position: 'absolute',
+        top: 6,
+        alignSelf: 'center',
+        left: '50%',
+        marginLeft: -18,
+    },
+    headerTitle: {
+        flex: 1,
+        fontSize: 16,
+        fontWeight: '700',
+        color: colors.secondary,
+        marginTop: 6,
+    },
+    closeBtn: { padding: 4, marginTop: 6 },
+    badge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+        backgroundColor: '#22C55E',
+    },
+    badgeText: { color: '#FFF', fontSize: 11, fontWeight: '600' },
+
+    // ── ScrollView fills remaining space ──
+    scrollArea: {
+        flex: 1,
+    },
+
+    body: {
+        paddingHorizontal: 20,
+        paddingTop: 16,
+        paddingBottom: 80,
+        flexGrow: 1,
+    },
+    name: { fontSize: 18, fontWeight: '700', color: colors.secondary, marginBottom: 4 },
+    price: { fontSize: 17, fontWeight: '700', color: colors.primary },
+    mrp: { fontSize: 13, color: colors.placeholder, textDecorationLine: 'line-through' },
+    desc: { fontSize: 14, color: colors.label, lineHeight: 20, marginBottom: 14 },
+
+    // Stats
+    statsRow: {
+        flexDirection: 'row',
+        backgroundColor: '#F9FAFB',
+        borderRadius: 14,
+        paddingVertical: 14,
+        paddingHorizontal: 8,
+        marginBottom: 20,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: colors.formBorder,
+    },
+    statBox: { flex: 1, alignItems: 'center', gap: 2 },
+    statDivider: { width: 1, height: 36, backgroundColor: '#E5E7EB' },
+    statVal: { fontSize: 17, fontWeight: '700', color: colors.secondary },
+    statLabel: { fontSize: 11, color: colors.placeholder },
+
+    // Sections
+    section: { marginBottom: 18 },
+    sectionTitle: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: colors.secondary,
+        marginBottom: 10,
+        textTransform: 'uppercase',
+        letterSpacing: 0.6,
+    },
+    sizeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    sizeChip: {
+        backgroundColor: '#F3F4F6',
+        paddingHorizontal: 14,
+        paddingVertical: 7,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+    },
+    sizeChipText: { fontSize: 13, fontWeight: '600', color: colors.secondary },
+    colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+    colorItem: { alignItems: 'center', gap: 4 },
+    colorCircle: { width: 28, height: 28, borderRadius: 14 },
+    colorLabel: { fontSize: 10, color: colors.placeholder, textTransform: 'capitalize' },
+
+    // Variants — same row style as DropdownPicker option
+    variantRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.formBorder,
+        backgroundColor: '#fff',
+    },
+    variantRowActive: { backgroundColor: '#EFF6FF' },
+    variantLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+    variantThumb: { width: 40, height: 40, borderRadius: 8, resizeMode: 'cover' },
+    variantSku: { fontSize: 12, fontWeight: '600', color: colors.secondary },
+    variantAttrs: { fontSize: 11, color: colors.placeholder, marginTop: 2 },
+    variantRight: { alignItems: 'flex-end' },
+    variantPrice: { fontSize: 14, fontWeight: '700', color: colors.primary },
+    variantMrp: { fontSize: 10, color: colors.placeholder, textDecorationLine: 'line-through', marginTop: 1 },
+    variantStock: { fontSize: 11, color: colors.placeholder, marginTop: 2 },
+
+    // Attributes
+    attributesGrid: { gap: 0 },
+    attrItem: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingVertical: 10,
+        paddingHorizontal: 4,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F3F4F6',
+    },
+    attrKey: { fontSize: 13, color: colors.placeholder },
+    attrValue: { fontSize: 13, fontWeight: '600', color: colors.secondary },
+
+    // GST
+    gstBox: {
+        backgroundColor: '#F0FDF4',
+        borderRadius: 14,
+        padding: 14,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: '#DCFCE7',
+        gap: 8,
+    },
+    gstRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    gstLabel: { fontSize: 13, color: '#16A34A' },
+    gstValue: { fontSize: 13, fontWeight: '600', color: '#166534' },
+
+    // Meta footer
+    metaFooter: {
+        borderTopWidth: 1,
+        borderTopColor: '#E5E7EB',
+        paddingTop: 14,
+        marginTop: 4,
+        gap: 4,
+    },
+    metaText: { fontSize: 11, color: colors.placeholder },
+});
+
+// ---------------------------------------------------------------------------
+// Card styles
+// ---------------------------------------------------------------------------
+const cardStyles = StyleSheet.create({
+    productCard: {
+        flexDirection: 'row',
+        backgroundColor: '#FFFFFF',
+        marginHorizontal: 16,
+        marginBottom: 12,
+        borderRadius: 16,
+        overflow: 'hidden',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.06,
+        shadowRadius: 6,
+        elevation: 2,
+        borderWidth: 1,
+        borderColor: colors.formBorder,
+    },
+    imageContainer: { width: 90, height: 110, position: 'relative' },
+    productImage: {
+        width: 90,
+        height: 110,
+        resizeMode: 'cover',
+        backgroundColor: '#F3F4F6',
+    },
+    featuredOverlay: {
+        position: 'absolute',
+        top: 6,
+        left: 6,
+        backgroundColor: colors.warning,
+        borderRadius: 4,
+        padding: 3,
+    },
+    trendingOverlay: {
+        position: 'absolute',
+        top: 6,
+        right: 6,
+        backgroundColor: '#6366F1',
+        borderRadius: 4,
+        padding: 3,
+    },
+    productInfo: { flex: 1, paddingHorizontal: 12, paddingVertical: 10 },
+    statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 5 },
+    statusBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 7,
+        paddingVertical: 2,
+        borderRadius: 6,
+        gap: 4,
+    },
+    statusDot: { width: 6, height: 6, borderRadius: 3 },
+    statusText: { fontSize: 11, fontWeight: '600' },
+    returnableBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#EEF2FF',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 6,
+        gap: 3,
+    },
+    returnableText: { fontSize: 10, color: '#6366F1', fontWeight: '600' },
+    productName: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: colors.secondary,
+        marginBottom: 3,
+        lineHeight: 20,
+    },
+    priceText: { fontSize: 14, fontWeight: '700', color: colors.primary, marginBottom: 5 },
+    mrpText: {
+        fontSize: 11,
+        color: colors.placeholder,
+        textDecorationLine: 'line-through',
+    },
+    colorsRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6 },
+    colorDot: { width: 12, height: 12, borderRadius: 6 },
+    moreColors: { fontSize: 10, color: colors.placeholder },
+    metaRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        flexWrap: 'wrap',
+        marginBottom: 8,
+    },
+    metaChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        backgroundColor: '#F3F4F6',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 6,
+    },
+    metaChipText: { fontSize: 10, color: colors.placeholder },
+    actionRow: { flexDirection: 'row', gap: 8 },
+    actionBtn: {
+        width: 30,
+        height: 30,
+        borderRadius: 8,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+    },
+    viewBtn: {
+        backgroundColor: colors.primary + '15',
+        borderColor: colors.primary + '30',
+    },
+    editBtn: {
+        backgroundColor: colors.warning + '15',
+        borderColor: colors.warning + '30',
+    },
+    rightActions: {
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingHorizontal: 8,
+        borderLeftWidth: 1,
+        borderLeftColor: colors.formBorder,
+    },
+    rightIconBtn: {
+        width: 34,
+        height: 34,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+});
+
+// ---------------------------------------------------------------------------
+// Main Screen
+// ---------------------------------------------------------------------------
 const ProductListingScreen = ({ navigation }: any) => {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(false);
@@ -828,44 +1335,54 @@ const ProductListingScreen = ({ navigation }: any) => {
     const [bottomSheetVisible, setBottomSheetVisible] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
-    // ── Status modal ──
     const [statusModalVisible, setStatusModalVisible] = useState(false);
     const [statusProduct, setStatusProduct] = useState<Product | null>(null);
     const [statusLoading, setStatusLoading] = useState(false);
 
-    // ── Qty modal ──
     const [qtyModalVisible, setQtyModalVisible] = useState(false);
     const [qtyProduct, setQtyProduct] = useState<Product | null>(null);
     const [qtyLoading, setQtyLoading] = useState(false);
 
-    const flatListRef = React.useRef<FlatList>(null);
+    const flatListRef = useRef<FlatList>(null);
     const debouncedSearch = useDebounce(searchText, 500);
 
     useEffect(() => {
-        setSearchTerm(debouncedSearch);
-        setPage(1);
+        const trimmed = debouncedSearch.trim();
+        const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+        if (wordCount >= 3 || trimmed === '') {
+            setSearchTerm(trimmed);
+            setPage(1);
+        }
     }, [debouncedSearch]);
 
+    const isMounted = useRef(false);
     useEffect(() => {
-        fetchProducts();
+        if (!isMounted.current) { isMounted.current = true; return; }
+        fetchProducts(searchTerm, page);
     }, [page, searchTerm]);
 
+    const isFirstFocus = useRef(true);
     useFocusEffect(
         useCallback(() => {
-            setPage(1);
-            fetchProducts();
-        }, [])
+            if (isFirstFocus.current) {
+                isFirstFocus.current = false;
+                setPage(1);
+                fetchProducts(searchTerm, 1);
+            } else {
+                fetchProducts(searchTerm, page);
+            }
+        }, [searchTerm, page])
     );
 
-    const fetchProducts = async () => {
+    const fetchProducts = async (term: string = searchTerm, pageNum: number = page) => {
         setLoading(true);
         setError(null);
         try {
             const { user } = await getUserData();
             const params: Record<string, any> = {
-                page,
+                page: pageNum,
                 limit: 10,
-                search: searchTerm || undefined,
+                search: term || undefined,
                 vendorId: user?.user?._id || user?._id,
             };
             const response = await getRequest(API_ENDPOINTS.GETALLPRODUCTSBYVENDOR, params);
@@ -901,7 +1418,6 @@ const ProductListingScreen = ({ navigation }: any) => {
         setBottomSheetVisible(true);
     };
 
-    // ── Status handlers ──
     const handleToggleStatus = (product: Product) => {
         setStatusProduct(product);
         setStatusModalVisible(true);
@@ -912,27 +1428,20 @@ const ProductListingScreen = ({ navigation }: any) => {
         setStatusLoading(true);
         try {
             const url = `${API_ENDPOINTS.UPDATEPRODUCTSTATUS}/${statusProduct._id}`;
-            console.log("🔵 Status URL:", url); // ← check this in logs
             const res: any = await putRequest(url, { isActive });
-
             if (res?.success) {
-                // Optimistic update
                 setProducts((prev) =>
-                    prev.map((p) =>
-                        p._id === statusProduct._id ? { ...p, isActive } : p
-                    )
+                    prev.map((p) => (p._id === statusProduct._id ? { ...p, isActive } : p))
                 );
                 setStatusModalVisible(false);
                 setStatusProduct(null);
             }
         } catch (e) {
-            /* silent — ApiClient shows toast */
         } finally {
             setStatusLoading(false);
         }
     };
 
-    // ── Qty handlers ──
     const handleUpdateQty = (product: Product) => {
         setQtyProduct(product);
         setQtyModalVisible(true);
@@ -947,7 +1456,6 @@ const ProductListingScreen = ({ navigation }: any) => {
                 { type, qty }
             );
             if (res?.success) {
-                // Optimistic update
                 setProducts((prev) =>
                     prev.map((p) =>
                         p._id === qtyProduct._id
@@ -965,7 +1473,6 @@ const ProductListingScreen = ({ navigation }: any) => {
                 setQtyProduct(null);
             }
         } catch (e) {
-            /* silent */
         } finally {
             setQtyLoading(false);
         }
@@ -974,10 +1481,10 @@ const ProductListingScreen = ({ navigation }: any) => {
     const renderEmpty = () => {
         if (loading && !refreshing) return null;
         return (
-            <View style={styles.emptyContainer}>
+            <View style={screenStyles.emptyContainer}>
                 <Ionicons name="cube-outline" size={52} color={colors.placeholder} />
-                <Text style={styles.emptyText}>No products found</Text>
-                <Text style={styles.emptySubtext}>Try adjusting your search or filters</Text>
+                <Text style={screenStyles.emptyText}>No products found</Text>
+                <Text style={screenStyles.emptySubtext}>Try adjusting your search or filters</Text>
             </View>
         );
     };
@@ -985,50 +1492,82 @@ const ProductListingScreen = ({ navigation }: any) => {
     const renderError = () => {
         if (!error) return null;
         return (
-            <View style={styles.errorBox}>
+            <View style={screenStyles.errorBox}>
                 <Ionicons name="alert-circle-outline" size={28} color={colors.error} />
-                <Text style={styles.errorText}>{error}</Text>
-                <TouchableOpacity style={styles.retryBtn} onPress={fetchProducts}>
+                <Text style={screenStyles.errorText}>{error}</Text>
+                <TouchableOpacity
+                    style={screenStyles.retryBtn}
+                    onPress={() => fetchProducts(searchTerm, page)}
+                >
                     <Ionicons name="refresh" size={15} color="#FFF" />
-                    <Text style={styles.retryText}>Retry</Text>
+                    <Text style={screenStyles.retryText}>Retry</Text>
                 </TouchableOpacity>
             </View>
         );
     };
 
     return (
-        <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+        <SafeAreaView style={screenStyles.safeArea} edges={['bottom']}>
             <View style={appTheme.scaffold}>
                 <AppBar title="Products" onBack={() => navigation.goBack()} />
 
                 {/* Search Bar */}
-                <View style={styles.searchContainer}>
-                    <View style={styles.searchWrapper}>
-                        <Ionicons name="search" size={17} color={colors.placeholder} style={styles.searchIcon} />
+                <View style={screenStyles.searchContainer}>
+                    <View style={screenStyles.searchWrapper}>
+                        <Ionicons
+                            name="search"
+                            size={17}
+                            color={colors.placeholder}
+                            style={{ marginRight: 8 }}
+                        />
                         <TextInput
-                            style={styles.searchInput}
-                            placeholder="Search products..."
+                            style={screenStyles.searchInput}
+                            placeholder="Type 3 words to auto-search..."
                             placeholderTextColor={colors.placeholder}
                             value={searchText}
                             onChangeText={setSearchText}
                             returnKeyType="search"
-                            onSubmitEditing={() => { setSearchTerm(searchText); setPage(1); }}
+                            onSubmitEditing={() => {
+                                const trimmed = searchText.trim();
+                                setSearchTerm(trimmed);
+                                setPage(1);
+                                fetchProducts(trimmed, 1);
+                                Keyboard.dismiss();
+                            }}
                         />
                         {searchText.length > 0 && (
                             <TouchableOpacity
-                                onPress={() => { setSearchText(''); Keyboard.dismiss(); }}
-                                style={styles.clearButton}
+                                onPress={() => {
+                                    setSearchText('');
+                                    setSearchTerm('');
+                                    setPage(1);
+                                    Keyboard.dismiss();
+                                }}
+                                style={{ padding: 4 }}
                             >
                                 <Ionicons name="close-circle" size={17} color={colors.placeholder} />
                             </TouchableOpacity>
                         )}
+                        <TouchableOpacity
+                            style={screenStyles.searchIconBtn}
+                            onPress={() => {
+                                if (searchText.trim().length > 0) {
+                                    setSearchTerm(searchText);
+                                    setPage(1);
+                                    Keyboard.dismiss();
+                                }
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <Ionicons name="arrow-forward-circle" size={28} color={colors.primary} />
+                        </TouchableOpacity>
                     </View>
                 </View>
 
                 {renderError()}
 
                 {loading && !refreshing && products.length === 0 && (
-                    <View style={styles.loadingOverlay}>
+                    <View style={screenStyles.loadingOverlay}>
                         <ActivityIndicator size="large" color={colors.primary} />
                     </View>
                 )}
@@ -1041,7 +1580,9 @@ const ProductListingScreen = ({ navigation }: any) => {
                         <ProductCard
                             product={item}
                             onView={handleViewProduct}
-                            onEdit={(p) => navigation.navigate('EditProduct', { productId: p._id })}
+                            onEdit={(p) =>
+                                navigation.navigate('EditProduct', { productId: p._id })
+                            }
                             onToggleStatus={handleToggleStatus}
                             onUpdateQty={handleUpdateQty}
                         />
@@ -1072,8 +1613,8 @@ const ProductListingScreen = ({ navigation }: any) => {
 
                 {/* FAB */}
                 <TouchableOpacity
-                    style={styles.fab}
-                    onPress={() => navigation.navigate('AddProduct')}
+                    style={screenStyles.fab}
+                    onPress={() => navigation.navigate('SearchAndAddProduct')}
                     activeOpacity={0.85}
                 >
                     <Ionicons name="add" size={28} color="#FFFFFF" />
@@ -1082,23 +1623,30 @@ const ProductListingScreen = ({ navigation }: any) => {
                 <ProductDetailsSheet
                     product={selectedProduct}
                     visible={bottomSheetVisible}
-                    onClose={() => { setBottomSheetVisible(false); setSelectedProduct(null); }}
+                    onClose={() => {
+                        setBottomSheetVisible(false);
+                        setSelectedProduct(null);
+                    }}
                 />
 
-                {/* ── Status Modal ── */}
                 <StatusToggleModal
                     visible={statusModalVisible}
                     product={statusProduct}
-                    onClose={() => { setStatusModalVisible(false); setStatusProduct(null); }}
+                    onClose={() => {
+                        setStatusModalVisible(false);
+                        setStatusProduct(null);
+                    }}
                     onConfirm={handleConfirmStatus}
                     loading={statusLoading}
                 />
 
-                {/* ── Qty Modal ── */}
                 <QuantityModal
                     visible={qtyModalVisible}
                     product={qtyProduct}
-                    onClose={() => { setQtyModalVisible(false); setQtyProduct(null); }}
+                    onClose={() => {
+                        setQtyModalVisible(false);
+                        setQtyProduct(null);
+                    }}
                     onConfirm={handleConfirmQty}
                     loading={qtyLoading}
                 />
@@ -1107,30 +1655,11 @@ const ProductListingScreen = ({ navigation }: any) => {
     );
 };
 
-// --- Styles ---
-const styles = {
+// ---------------------------------------------------------------------------
+// Screen-level styles
+// ---------------------------------------------------------------------------
+const screenStyles = StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: colors.scaffoldBg },
-
-    // Search
-    // ── Right vertical action column ──
-    // ── Right icon button column ──
-    rightActions: {
-        flexDirection: 'column' as const,
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-        paddingHorizontal: 8,
-        borderLeftWidth: 1,
-        borderLeftColor: colors.formBorder,
-    },
-    rightIconBtn: {
-        width: 34,
-        height: 34,
-        borderRadius: 10,
-        alignItems: 'center' as const,
-        justifyContent: 'center' as const,
-    },
-
     searchContainer: {
         paddingHorizontal: 16,
         paddingTop: 12,
@@ -1147,160 +1676,31 @@ const styles = {
         paddingHorizontal: 12,
         height: 44,
     },
-    searchIcon: { marginRight: 8 },
     searchInput: {
         flex: 1,
         fontSize: 15,
-        fontFamily: Fonts.Regular || 'System',
         color: colors.secondary,
         paddingVertical: 0,
     },
-    clearButton: { padding: 4 },
-
-    // Loading overlay (first load / page switch with empty list)
+    searchIconBtn: {
+        marginLeft: 6,
+        paddingLeft: 8,
+        borderLeftWidth: 1,
+        borderLeftColor: colors.formBorder,
+        height: 28,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
     loadingOverlay: {
-        position: 'absolute' as const,
+        position: 'absolute',
         top: 120,
         left: 0,
         right: 0,
         bottom: 0,
-        justifyContent: 'center' as const,
-        alignItems: 'center' as const,
-        zIndex: 10,
-    },
-
-    // Product Card
-    productCard: {
-        flexDirection: 'row',
-        backgroundColor: '#FFFFFF',
-        marginHorizontal: 16,
-        marginBottom: 12,
-        borderRadius: 16,
-        overflow: 'hidden',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.06,
-        shadowRadius: 6,
-        elevation: 2,
-        borderWidth: 1,
-        borderColor: colors.formBorder,
-    },
-    imageContainer: {
-        width: 90,
-        height: 110,
-        position: 'relative',
-    },
-    productImage: {
-        width: 90,
-        height: 110,
-        resizeMode: 'cover',
-        backgroundColor: '#F3F4F6',
-    },
-    featuredOverlay: {
-        position: 'absolute',
-        top: 6,
-        left: 6,
-        backgroundColor: colors.warning,
-        borderRadius: 4,
-        padding: 3,
-    },
-    trendingOverlay: {
-        position: 'absolute',
-        top: 6,
-        right: 6,
-        backgroundColor: '#6366F1',
-        borderRadius: 4,
-        padding: 3,
-    },
-    productInfo: {
-        flex: 1,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-    },
-    statusRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        marginBottom: 5,
-    },
-    statusBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 7,
-        paddingVertical: 2,
-        borderRadius: 6,
-        gap: 4,
-    },
-    statusDot: { width: 6, height: 6, borderRadius: 3 },
-    statusText: { fontSize: 11, fontFamily: Fonts.Medium || 'System', fontWeight: '600' },
-    returnableBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#EEF2FF',
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 6,
-        gap: 3,
-    },
-    returnableText: {
-        fontSize: 10,
-        color: '#6366F1',
-        fontFamily: Fonts.Medium || 'System',
-        fontWeight: '600',
-    },
-    productName: {
-        fontSize: 14,
-        fontFamily: Fonts.Medium || 'System',
-        fontWeight: '600',
-        color: colors.secondary,
-        marginBottom: 3,
-        lineHeight: 20,
-    },
-    priceText: {
-        fontSize: 14,
-        fontFamily: Fonts.Bold || 'System',
-        fontWeight: '700',
-        color: colors.primary,
-        marginBottom: 5,
-    },
-    colorsRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        marginBottom: 6,
-    },
-    colorDot: { width: 12, height: 12, borderRadius: 6 },
-    moreColors: { fontSize: 10, color: colors.placeholder, fontFamily: Fonts.Regular || 'System' },
-    metaRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        flexWrap: 'wrap',
-        marginBottom: 8,
-    },
-    metaChip: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 3,
-        backgroundColor: '#F3F4F6',
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 6,
-    },
-    metaChipText: { fontSize: 10, color: colors.placeholder, fontFamily: Fonts.Regular || 'System' },
-    actionRow: { flexDirection: 'row', gap: 8 },
-    actionBtn: {
-        width: 30,
-        height: 30,
-        borderRadius: 8,
         justifyContent: 'center',
         alignItems: 'center',
-        borderWidth: 1,
+        zIndex: 10,
     },
-    viewBtn: { backgroundColor: colors.primary + '15', borderColor: colors.primary + '30' },
-    editBtn: { backgroundColor: colors.warning + '15', borderColor: colors.warning + '30' },
-
-    // FAB
     fab: {
         position: 'absolute',
         right: 20,
@@ -1317,8 +1717,6 @@ const styles = {
         shadowRadius: 8,
         elevation: 8,
     },
-
-    // Empty / Error
     emptyContainer: {
         alignItems: 'center',
         justifyContent: 'center',
@@ -1326,13 +1724,8 @@ const styles = {
         paddingHorizontal: 24,
         gap: 12,
     },
-    emptyText: { fontSize: 18, fontFamily: Fonts.Medium || 'System', color: colors.secondary },
-    emptySubtext: {
-        fontSize: 14,
-        fontFamily: Fonts.Regular || 'System',
-        color: colors.placeholder,
-        textAlign: 'center',
-    },
+    emptyText: { fontSize: 18, color: colors.secondary },
+    emptySubtext: { fontSize: 14, color: colors.placeholder, textAlign: 'center' },
     errorBox: {
         marginHorizontal: 16,
         marginTop: 12,
@@ -1344,7 +1737,7 @@ const styles = {
         borderColor: colors.error + '40',
         gap: 10,
     },
-    errorText: { color: colors.error, fontSize: 13, fontFamily: Fonts.Regular || 'System', textAlign: 'center' },
+    errorText: { color: colors.error, fontSize: 13, textAlign: 'center' },
     retryBtn: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -1354,204 +1747,7 @@ const styles = {
         borderRadius: 20,
         gap: 5,
     },
-    retryText: { color: '#FFF', fontSize: 13, fontFamily: Fonts.Medium || 'System', fontWeight: '500' },
-
-    // Bottom Sheet
-    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-    bottomSheet: {
-        backgroundColor: '#FFFFFF',
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        maxHeight: '90%',
-    },
-    sheetHandleRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingTop: 12,
-        paddingBottom: 8,
-        paddingHorizontal: 16,
-        position: 'relative',
-    },
-    sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#D1D5DB' },
-    closeBtn: { position: 'absolute', right: 12, top: 4, padding: 8 },
-
-    sheetHero: { position: 'relative' },
-    sheetHeroImage: {
-        width: '100%',
-        height: 220,
-        resizeMode: 'cover',
-        backgroundColor: '#F3F4F6',
-    },
-    sheetBadgeRow: {
-        position: 'absolute',
-        top: 12,
-        left: 12,
-        flexDirection: 'row',
-        gap: 6,
-    },
-    sheetBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 8,
-    },
-    sheetBadgeText: { color: '#FFF', fontSize: 11, fontFamily: Fonts.Medium || 'System', fontWeight: '600' },
-    imageDots: {
-        position: 'absolute',
-        bottom: 10,
-        alignSelf: 'center',
-        flexDirection: 'row',
-        gap: 5,
-        left: 0,
-        right: 0,
-        justifyContent: 'center',
-    },
-    imageDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.5)' },
-    imageDotActive: { backgroundColor: '#FFFFFF', width: 16 },
-
-    sheetBody: { paddingHorizontal: 20, paddingBottom: 40, paddingTop: 16 },
-    sheetName: {
-        fontSize: 20,
-        fontFamily: Fonts.Bold || 'System',
-        fontWeight: '700',
-        color: colors.secondary,
-        marginBottom: 4,
-    },
-    sheetPrice: {
-        fontSize: 18,
-        fontFamily: Fonts.Bold || 'System',
-        fontWeight: '700',
-        color: colors.primary,
-        marginBottom: 8,
-    },
-    sheetDesc: {
-        fontSize: 14,
-        fontFamily: Fonts.Regular || 'System',
-        color: colors.label,
-        lineHeight: 20,
-        marginBottom: 16,
-    },
-
-    statsRow: {
-        flexDirection: 'row',
-        backgroundColor: '#F9FAFB',
-        borderRadius: 16,
-        paddingVertical: 14,
-        paddingHorizontal: 8,
-        marginBottom: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    statBox: { flex: 1, alignItems: 'center', gap: 2 },
-    statDivider: { width: 1, height: 40, backgroundColor: '#E5E7EB' },
-    statVal: { fontSize: 18, fontFamily: Fonts.Bold || 'System', fontWeight: '700', color: colors.secondary },
-    statLabel: { fontSize: 11, fontFamily: Fonts.Regular || 'System', color: colors.placeholder },
-
-    sheetSection: { marginBottom: 18 },
-    sheetSectionTitle: {
-        fontSize: 13,
-        fontFamily: Fonts.Medium || 'System',
-        fontWeight: '600',
-        color: colors.secondary,
-        marginBottom: 10,
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
-    },
-    sizeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    sizeChip: {
-        backgroundColor: '#F3F4F6',
-        paddingHorizontal: 14,
-        paddingVertical: 7,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: '#E5E7EB',
-    },
-    sizeChipText: { fontSize: 13, fontFamily: Fonts.Medium || 'System', color: colors.secondary, fontWeight: '600' },
-    colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-    colorItem: { alignItems: 'center', gap: 4 },
-    colorCircle: { width: 28, height: 28, borderRadius: 14 },
-    colorLabel: {
-        fontSize: 10,
-        fontFamily: Fonts.Regular || 'System',
-        color: colors.placeholder,
-        textTransform: 'capitalize',
-    },
-
-    variantRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: 10,
-        borderRadius: 12,
-        marginBottom: 8,
-        backgroundColor: '#F9FAFB',
-        borderWidth: 1,
-        borderColor: '#E5E7EB',
-    },
-    variantRowActive: { borderColor: colors.primary, backgroundColor: colors.primary + '08' },
-    variantLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-    variantThumb: { width: 40, height: 40, borderRadius: 8, resizeMode: 'cover' },
-    variantSku: { fontSize: 12, fontFamily: Fonts.Medium || 'System', fontWeight: '600', color: colors.secondary },
-    variantAttrs: { fontSize: 11, fontFamily: Fonts.Regular || 'System', color: colors.placeholder, marginTop: 2 },
-    variantRight: { alignItems: 'flex-end' },
-    variantPrice: { fontSize: 14, fontFamily: Fonts.Bold || 'System', fontWeight: '700', color: colors.primary },
-    variantStock: { fontSize: 11, fontFamily: Fonts.Regular || 'System', color: colors.placeholder, marginTop: 2 },
-
-    attributesGrid: { gap: 8 },
-    attrItem: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingVertical: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: '#F3F4F6',
-    },
-    attrKey: { fontSize: 13, fontFamily: Fonts.Regular || 'System', color: colors.placeholder },
-    attrValue: { fontSize: 13, fontFamily: Fonts.Medium || 'System', fontWeight: '600', color: colors.secondary },
-
-    gstBox: {
-        backgroundColor: '#F0FDF4',
-        borderRadius: 14,
-        padding: 14,
-        marginBottom: 16,
-        borderWidth: 1,
-        borderColor: '#DCFCE7',
-        gap: 8,
-    },
-    gstRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    gstLabel: { fontSize: 13, fontFamily: Fonts.Regular || 'System', color: '#16A34A' },
-    gstValue: { fontSize: 13, fontFamily: Fonts.Medium || 'System', fontWeight: '600', color: '#166534' },
-
-    metaFooter: {
-        borderTopWidth: 1,
-        borderTopColor: '#E5E7EB',
-        paddingTop: 14,
-        marginTop: 4,
-        gap: 4,
-    },
-    metaFooterText: { fontSize: 11, fontFamily: Fonts.Regular || 'System', color: colors.placeholder },
-
-    mrpText: {
-        fontSize: 11,
-        fontFamily: Fonts.Regular || 'System',
-        color: colors.placeholder,
-        textDecorationLine: 'line-through',
-    },
-    sheetMrp: {
-        fontSize: 14,
-        fontFamily: Fonts.Regular || 'System',
-        color: colors.placeholder,
-        textDecorationLine: 'line-through',
-    },
-    variantMrp: {
-        fontSize: 10,
-        fontFamily: Fonts.Regular || 'System',
-        color: colors.placeholder,
-        textDecorationLine: 'line-through',
-        marginTop: 1,
-    },
-} as const;
+    retryText: { color: '#FFF', fontSize: 13, fontWeight: '500' },
+});
 
 export default ProductListingScreen;

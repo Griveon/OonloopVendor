@@ -25,6 +25,9 @@ import ForgotPinScreen from "../screens/Auth/ForgotPin/ForgotPinScreen";
 import ProductListingScreen from "../screens/Product/ProductListingScreen";
 import VendorAddProductScreen from "../screens/Product/AddProductScreen";
 import VendorEditProductScreen from "../screens/Product/EditProductScreen";
+import SearchAndAddProduct from "../screens/Product/SearchAndAddProduct";
+import OrdersScreen from "../screens/Orders/OrdersScreen";
+import VendorAccountStatementScreen from "../screens/Accounts/VendorAccountStatementScreen";
 // import DashboardScreen from "../screens/Dashboard/DashboardScreen"; // Uncomment when ready
 
 export type RootStackParamList = {
@@ -45,11 +48,13 @@ export type RootStackParamList = {
     AddCoupon: undefined;
     EditCoupon: undefined;
     VendorKYC: undefined;
+    Orders: undefined;
     ForgotPin: undefined;
     ProductListing: undefined;
     AddProduct: undefined;
     EditProduct: undefined;
-
+    SearchAndAddProduct: undefined;
+    Accounts: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -89,6 +94,7 @@ const AppNavigator = forwardRef<NavigationContainerRef<RootStackParamList>>((pro
                 <Stack.Screen name="VendorCouponListing" component={CouponListingScreen} />
                 <Stack.Screen name="AddCoupon" component={AddCouponScreen} />
                 <Stack.Screen name="EditCoupon" component={EditCouponScreen} />
+                <Stack.Screen name="Orders" component={OrdersScreen} />
                 <Stack.Screen name="ProductListing" component={ProductListingScreen} />
                 <Stack.Screen name="AddProduct" component={VendorAddProductScreen} />
                 <Stack.Screen name="VendorKYC" component={VendorKycScreen} />
@@ -97,6 +103,8 @@ const AppNavigator = forwardRef<NavigationContainerRef<RootStackParamList>>((pro
                 <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
                 <Stack.Screen name="TermsAndCondition" component={TermsAndConditionsScreen} />
                 <Stack.Screen name="EditProduct" component={VendorEditProductScreen} />
+                <Stack.Screen name="Accounts" component={VendorAccountStatementScreen} />
+                <Stack.Screen name="SearchAndAddProduct" component={SearchAndAddProduct} />
             </Stack.Navigator>
         </NavigationContainer>
     );

@@ -1523,22 +1523,22 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
     };
 
     // ── GST recalculation (same as Add) ───────────────────────────────────────
-    const recalculateVariantGST = useCallback(() => {
-        const gstPercent = parseFloat(form.gst.gstPercent || "0");
-        const updated = variants.map((v) => {
-            const sellingPrice = parseFloat(v.price || "0");
-            const gstAmount = (sellingPrice * gstPercent) / 100;
-            const priceInclGst = sellingPrice + gstAmount;
-            return { ...v, mrp: priceInclGst.toFixed(2) };
-        });
-        setVariants(updated);
-    }, [form.gst.gstPercent, variants]);
+    // const recalculateVariantGST = useCallback(() => {
+    //     const gstPercent = parseFloat(form.gst.gstPercent || "0");
+    //     const updated = variants.map((v) => {
+    //         const sellingPrice = parseFloat(v.price || "0");
+    //         const gstAmount = (sellingPrice * gstPercent) / 100;
+    //         const priceInclGst = sellingPrice + gstAmount;
+    //         return { ...v, mrp: priceInclGst.toFixed(2) };
+    //     });
+    //     setVariants(updated);
+    // }, [form.gst.gstPercent, variants]);
 
-    useEffect(() => {
-        if (variants.length > 0) {
-            recalculateVariantGST();
-        }
-    }, [form.gst.gstPercent]);
+    // useEffect(() => {
+    //     if (variants.length > 0) {
+    //         recalculateVariantGST();
+    //     }
+    // }, [form.gst.gstPercent]);
 
     // ── Step validations (synced with Add) ────────────────────────────────────
     const isStep1Valid =
@@ -1652,10 +1652,7 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
                     stock: parseInt(v.stock || "0"),
                     sku: v.sku,
                     price: parseFloat(v.price),
-                    mrp: form.gst.gstRuleId && parseFloat(form.gst.gstPercent || "0") > 0
-                        ? parseFloat(v.price || "0") +
-                        (parseFloat(v.price || "0") * parseFloat(form.gst.gstPercent || "0")) / 100
-                        : parseFloat(v.mrp || "0"),
+                    mrp: parseFloat(v.mrp || "0"),
                     images: (v.images || [])
                         .filter((img) => img.isExisting)        // ← ADD THIS
                         .map((img) => ({
@@ -2122,7 +2119,7 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
                     />
 
                     {/* Variant GST Summary (same as Add) */}
-                    <View style={{ marginTop: 10 }}>
+                    {/* <View style={{ marginTop: 10 }}>
                         <Text style={{ fontSize: 16, fontWeight: "600", marginBottom: 10 }}>
                             Variant GST Summary
                         </Text>
@@ -2204,7 +2201,7 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
                                 </View>
                             );
                         })}
-                    </View>
+                    </View> */}
 
                     {isGstLocked && (
                         <TouchableOpacity

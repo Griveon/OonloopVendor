@@ -1,5 +1,4 @@
-// screens/vendor/VendorKycScreen.tsx
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useCallback, useState } from "react";
 import {
     View,
     ScrollView,
@@ -11,9 +10,12 @@ import {
     StyleSheet,
     Alert,
     Image,
-    TextInput
+    Linking,
+    RefreshControl,
+    TextInput,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import Toast from "react-native-toast-message";
 import {
@@ -22,25 +24,29 @@ import {
     ImagePickerResponse,
     Asset,
 } from "react-native-image-picker";
+
 import { colors } from "../../constants/AppThem";
 import AppBar from "../../components/utils/AppBar";
 import FloatingInput from "../../components/inputs/FloatingInput";
 import { getUserData } from "../../components/AsyncStorage/AsyncStorage";
-import { getRequest, putRequest, uploadRequest } from "../../constants/ApiClient";
+import {
+    getRequest,
+    putRequest,
+    uploadRequest,
+} from "../../constants/ApiClient";
 import { API_ENDPOINTS } from "../../constants/ApiEndpoints";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type KycDocField =
-    | "panCard"
+type VendorKycDocField =
     | "gstCertificate"
+    | "panCard"
     | "cancelledCheque"
-    | "aadhaarCard"
     | "storeRegistration"
+    | "aadhaarCard"
     | "tradeLicense"
     | "udyamAadhaar"
     | "shopActLicense"
-    | "certificateOfIncorporation";
+    | "certificateOfIncorporation"
+    | "other";
 
 type UploadedFile = {
     uri: string;
@@ -48,14 +54,21 @@ type UploadedFile = {
     type: string;
 };
 
-type OtherDocument = {
-    id: string;
+type ExistingKycDocument = {
+    key: VendorKycDocField;
     label: string;
-    file: UploadedFile;
+    fileUrl?: string;
+    fileKey?: string;
+    previewUrl?: string;
+    originalName?: string;
+    mimeType?: string;
+    status?: "pending" | "approved" | "rejected";
+    adminRemark?: string;
+    updatedAt?: string;
 };
 
-
-type KycFilesState = Partial<Record<KycDocField, UploadedFile>>;
+type KycFilesState = Partial<Record<VendorKycDocField, UploadedFile>>;
+type ExistingKycState = Partial<Record<VendorKycDocField, ExistingKycDocument>>;
 
 type BankDetails = {
     accountHolder: string;
@@ -64,25 +77,21 @@ type BankDetails = {
     ifsc: string;
 };
 
-// ─── KYC Document Config ──────────────────────────────────────────────────────
-// required: true  → mandatory (only Aadhaar)
-// required: false → optional
-
 const KYC_DOC_CONFIG: Record<
-    KycDocField,
+    VendorKycDocField,
     { label: string; icon: string; required: boolean; hint: string }
 > = {
     aadhaarCard: {
         label: "Aadhaar Card",
         icon: "finger-print-outline",
         required: true,
-        hint: "Front side of your Aadhaar card",
+        hint: "Upload clear Aadhaar card image",
     },
     panCard: {
         label: "PAN Card",
         icon: "card-outline",
         required: true,
-        hint: "Upload a clear image of your PAN card",
+        hint: "Upload clear PAN card image",
     },
     gstCertificate: {
         label: "GST Certificate",
@@ -100,7 +109,7 @@ const KYC_DOC_CONFIG: Record<
         label: "Store Registration",
         icon: "storefront-outline",
         required: false,
-        hint: "Store / Business registration document",
+        hint: "Store or business registration document",
     },
     tradeLicense: {
         label: "Trade License",
@@ -126,10 +135,15 @@ const KYC_DOC_CONFIG: Record<
         required: false,
         hint: "Issued by Ministry of Corporate Affairs",
     },
+    other: {
+        label: "Other Document",
+        icon: "attach-outline",
+        required: false,
+        hint: "Any additional business document",
+    },
 };
 
-// Fixed display order — Aadhaar first as it is the only required doc
-const ALL_DOC_FIELDS: KycDocField[] = [
+const ALL_DOC_FIELDS: VendorKycDocField[] = [
     "aadhaarCard",
     "panCard",
     "gstCertificate",
@@ -139,28 +153,1129 @@ const ALL_DOC_FIELDS: KycDocField[] = [
     "udyamAadhaar",
     "shopActLicense",
     "certificateOfIncorporation",
+    "other",
 ];
 
-// ─── Page Header ──────────────────────────────────────────────────────────────
-
-const PageHeader = () => (
-    <View style={headerStyles.container}>
-        <View style={headerStyles.badge}>
-            <Ionicons
-                name="shield-checkmark-outline"
-                size={14}
-                color={colors.primary}
-                style={{ marginRight: 5 }}
-            />
-            <Text style={headerStyles.eyebrow}>KYC Verification</Text>
-        </View>
-        <Text style={headerStyles.title}>Submit KYC Documents</Text>
-        <Text style={headerStyles.subtitle}>
-            Upload your business documents and bank details to verify your vendor
-            account. Approved accounts unlock full selling features.
-        </Text>
-    </View>
+const REQUIRED_DOC_FIELDS: VendorKycDocField[] = ALL_DOC_FIELDS.filter(
+    (field) => KYC_DOC_CONFIG[field].required
 );
+
+const showToast = (
+    type: "success" | "error" | "info",
+    text1: string,
+    text2?: string
+) => {
+    Toast.show({
+        type,
+        text1,
+        text2,
+    });
+};
+
+const getLoggedUserIdFromStorage = async () => {
+    const stored: any = await getUserData();
+
+    return (
+        stored?.user?.user?._id ||
+        stored?.user?._id ||
+        stored?.user?.id ||
+        stored?.userId ||
+        stored?._id ||
+        ""
+    );
+};
+
+const normalizeVendorProfileResponse = (res: any) => {
+    return (
+        res?.vendor ||
+        res?.data?.vendor ||
+        res?.data?.data?.vendor ||
+        res?.data?.vendorProfile ||
+        res?.data?.profile ||
+        res?.data?.data?.vendorProfile ||
+        res?.data?.data?.profile ||
+        res?.data?.data ||
+        res?.data ||
+        null
+    );
+};
+
+const normalizePreviewData = (res: any) => {
+    return (
+        res?.data?.data ||
+        res?.data?.vendor ||
+        res?.data?.vendorProfile ||
+        res?.data ||
+        res ||
+        null
+    );
+};
+
+const buildExistingDocsFromKycObject = (kycDocuments: any): ExistingKycState => {
+    const docsMap: ExistingKycState = {};
+
+    if (!kycDocuments || typeof kycDocuments !== "object") {
+        return docsMap;
+    }
+
+    ALL_DOC_FIELDS.forEach((key) => {
+        const doc = kycDocuments?.[key];
+
+        if (!doc?.fileUrl && !doc?.previewUrl) return;
+
+        docsMap[key] = {
+            key,
+            label: KYC_DOC_CONFIG[key].label,
+            fileUrl: doc.fileUrl || doc.previewUrl || "",
+            fileKey: doc.fileKey || "",
+            previewUrl: doc.previewUrl || doc.fileUrl || "",
+            originalName: doc.originalName || KYC_DOC_CONFIG[key].label,
+            mimeType: doc.mimeType || "",
+            status: doc.status || "pending",
+            adminRemark: doc.adminRemark || "",
+            updatedAt: doc.updatedAt || "",
+        };
+    });
+
+    return docsMap;
+};
+
+const buildExistingDocsFromPreviewArray = (documents: any[]): ExistingKycState => {
+    const docsMap: ExistingKycState = {};
+
+    if (!Array.isArray(documents)) {
+        return docsMap;
+    }
+
+    documents.forEach((doc: ExistingKycDocument) => {
+        if (!doc?.key) return;
+
+        docsMap[doc.key] = {
+            ...doc,
+            key: doc.key,
+            label: doc.label || KYC_DOC_CONFIG[doc.key]?.label || String(doc.key),
+            fileUrl: doc.fileUrl || doc.previewUrl || "",
+            previewUrl: doc.previewUrl || doc.fileUrl || "",
+            originalName:
+                doc.originalName ||
+                doc.label ||
+                KYC_DOC_CONFIG[doc.key]?.label ||
+                String(doc.key),
+            mimeType: doc.mimeType || "",
+            status: doc.status || "pending",
+            adminRemark: doc.adminRemark || "",
+            updatedAt: doc.updatedAt || "",
+        };
+    });
+
+    return docsMap;
+};
+
+const getStatusStyle = (status?: string) => {
+    switch (status) {
+        case "approved":
+            return {
+                bg: "#DCFCE7",
+                text: "#16A34A",
+                icon: "checkmark-circle-outline",
+                label: "Approved",
+            };
+        case "rejected":
+            return {
+                bg: "#FEE2E2",
+                text: "#DC2626",
+                icon: "close-circle-outline",
+                label: "Rejected",
+            };
+        default:
+            return {
+                bg: "#FEF3C7",
+                text: "#D97706",
+                icon: "time-outline",
+                label: "Pending",
+            };
+    }
+};
+
+const PageHeader = ({
+    isKycSubmitted,
+    isKycApproved,
+    profileStatus,
+    storeName,
+}: {
+    isKycSubmitted: boolean;
+    isKycApproved: boolean;
+    profileStatus: string;
+    storeName: string;
+}) => {
+    const getStatusText = () => {
+        if (isKycApproved) return "Verified";
+        if (isKycSubmitted) return profileStatus || "Pending Review";
+        return "Not Submitted";
+    };
+
+    const statusColor = isKycApproved
+        ? "#16A34A"
+        : isKycSubmitted
+            ? "#D97706"
+            : "#EF4444";
+
+    return (
+        <View style={headerStyles.container}>
+            <View style={headerStyles.badge}>
+                <Ionicons
+                    name="shield-checkmark-outline"
+                    size={14}
+                    color={colors.primary}
+                    style={{ marginRight: 5 }}
+                />
+                <Text style={headerStyles.eyebrow}>Vendor Verification</Text>
+            </View>
+
+            <Text style={headerStyles.title}>Submit Vendor KYC</Text>
+
+            <Text style={headerStyles.subtitle}>
+                {storeName
+                    ? `${storeName} needs verified bank details and documents before full selling access.`
+                    : "Complete your bank details and upload business documents to verify your vendor account."}
+            </Text>
+
+            <View style={headerStyles.statusBox}>
+                <Ionicons
+                    name={
+                        isKycApproved
+                            ? "checkmark-circle-outline"
+                            : isKycSubmitted
+                                ? "time-outline"
+                                : "alert-circle-outline"
+                    }
+                    size={18}
+                    color={statusColor}
+                />
+
+                <Text style={headerStyles.statusText}>
+                    KYC Status: {getStatusText()}
+                </Text>
+            </View>
+        </View>
+    );
+};
+
+const DocumentUploadCard = ({
+    field,
+    file,
+    existingDoc,
+    onPick,
+    onRemove,
+    onPreview,
+}: {
+    field: VendorKycDocField;
+    file?: UploadedFile;
+    existingDoc?: ExistingKycDocument;
+    onPick: (field: VendorKycDocField) => void;
+    onRemove: (field: VendorKycDocField) => void;
+    onPreview: (doc?: ExistingKycDocument) => void;
+}) => {
+    const config = KYC_DOC_CONFIG[field];
+    const isLocalUploaded = !!file;
+    const isAlreadySubmitted = !!existingDoc;
+    const isUploaded = isLocalUploaded || isAlreadySubmitted;
+    const statusStyle = getStatusStyle(existingDoc?.status);
+
+    return (
+        <View
+            style={[
+                docStyles.card,
+                isUploaded
+                    ? docStyles.cardUploaded
+                    : config.required
+                        ? docStyles.cardRequired
+                        : null,
+                existingDoc?.status === "rejected" && docStyles.cardRejected,
+            ]}
+        >
+            <View style={docStyles.header}>
+                <View style={[docStyles.iconBg, isUploaded && docStyles.iconBgUploaded]}>
+                    <Ionicons
+                        name={(isUploaded ? "checkmark-outline" : config.icon) as any}
+                        size={20}
+                        color={isUploaded ? "#fff" : colors.primary}
+                    />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                    <View style={docStyles.labelRow}>
+                        <Text style={docStyles.docLabel}>{config.label}</Text>
+
+                        <View
+                            style={[
+                                docStyles.badge,
+                                config.required
+                                    ? docStyles.badgeRequired
+                                    : docStyles.badgeOptional,
+                            ]}
+                        >
+                            <Text
+                                style={[
+                                    docStyles.badgeText,
+                                    config.required
+                                        ? docStyles.badgeTextRequired
+                                        : docStyles.badgeTextOptional,
+                                ]}
+                            >
+                                {config.required ? "Required" : "Optional"}
+                            </Text>
+                        </View>
+
+                        {existingDoc && (
+                            <View
+                                style={[
+                                    docStyles.statusBadge,
+                                    { backgroundColor: statusStyle.bg },
+                                ]}
+                            >
+                                <Ionicons
+                                    name={statusStyle.icon as any}
+                                    size={11}
+                                    color={statusStyle.text}
+                                />
+                                <Text
+                                    style={[
+                                        docStyles.statusBadgeText,
+                                        { color: statusStyle.text },
+                                    ]}
+                                >
+                                    {statusStyle.label}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+
+                    <Text style={docStyles.hint}>{config.hint}</Text>
+
+                    {!!existingDoc?.adminRemark && existingDoc.status === "rejected" && (
+                        <Text style={docStyles.rejectReason}>
+                            Reason: {existingDoc.adminRemark}
+                        </Text>
+                    )}
+                </View>
+            </View>
+
+            {isLocalUploaded ? (
+                <View style={docStyles.uploadedRow}>
+                    {file.type.startsWith("image/") ? (
+                        <Image source={{ uri: file.uri }} style={docStyles.thumb} />
+                    ) : (
+                        <View style={docStyles.pdfPreview}>
+                            <Ionicons
+                                name="document-outline"
+                                size={22}
+                                color={colors.primary}
+                            />
+                        </View>
+                    )}
+
+                    <View style={{ flex: 1 }}>
+                        <Text style={docStyles.fileName} numberOfLines={1}>
+                            {file.name}
+                        </Text>
+                        <Text style={docStyles.fileStatus}>Ready to upload</Text>
+                    </View>
+
+                    <TouchableOpacity
+                        onPress={() => onRemove(field)}
+                        style={docStyles.removeBtn}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                        <Ionicons name="close-circle" size={22} color="#EF4444" />
+                    </TouchableOpacity>
+                </View>
+            ) : isAlreadySubmitted ? (
+                <View style={docStyles.submittedBox}>
+                    <View style={docStyles.submittedLeft}>
+                        {existingDoc?.mimeType?.startsWith("image/") &&
+                            (existingDoc?.previewUrl || existingDoc?.fileUrl) ? (
+                            <Image
+                                source={{
+                                    uri: existingDoc.previewUrl || existingDoc.fileUrl,
+                                }}
+                                style={docStyles.thumb}
+                            />
+                        ) : (
+                            <View style={docStyles.pdfPreview}>
+                                <Ionicons
+                                    name="document-outline"
+                                    size={22}
+                                    color={colors.primary}
+                                />
+                            </View>
+                        )}
+
+                        <View style={{ flex: 1 }}>
+                            <Text style={docStyles.fileName} numberOfLines={1}>
+                                {existingDoc?.originalName || config.label}
+                            </Text>
+                            <Text style={docStyles.fileStatus}>Already submitted</Text>
+                        </View>
+                    </View>
+
+                    <View style={docStyles.actionRow}>
+                        <TouchableOpacity
+                            style={docStyles.previewBtn}
+                            onPress={() => onPreview(existingDoc)}
+                            activeOpacity={0.75}
+                        >
+                            <Ionicons
+                                name="eye-outline"
+                                size={15}
+                                color={colors.primary}
+                            />
+                            <Text style={docStyles.previewBtnText}>Preview</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={docStyles.replaceBtn}
+                            onPress={() => onPick(field)}
+                            activeOpacity={0.75}
+                        >
+                            <Ionicons
+                                name="cloud-upload-outline"
+                                size={15}
+                                color="#D97706"
+                            />
+                            <Text style={docStyles.replaceBtnText}>Replace</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            ) : (
+                <TouchableOpacity
+                    style={docStyles.uploadBtn}
+                    onPress={() => onPick(field)}
+                    activeOpacity={0.75}
+                >
+                    <Ionicons
+                        name="cloud-upload-outline"
+                        size={18}
+                        color={colors.primary}
+                    />
+                    <Text style={docStyles.uploadBtnText}>Select File</Text>
+                    <Text style={docStyles.uploadFormats}>JPG · PNG</Text>
+                </TouchableOpacity>
+            )}
+        </View>
+    );
+};
+
+const KycProgress = ({
+    uploaded,
+    submitted,
+    total,
+}: {
+    uploaded: number;
+    submitted: number;
+    total: number;
+}) => {
+    const completed = Math.max(uploaded, submitted);
+    const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
+
+    return (
+        <View style={progressStyles.container}>
+            <View style={progressStyles.row}>
+                <Text style={progressStyles.label}>KYC Progress</Text>
+                <Text style={progressStyles.count}>
+                    {completed} / {total}
+                </Text>
+            </View>
+
+            <View style={progressStyles.track}>
+                <View style={[progressStyles.fill, { width: `${pct}%` as any }]} />
+            </View>
+
+            <Text style={progressStyles.sub}>
+                Existing submitted documents can be previewed or replaced.
+            </Text>
+        </View>
+    );
+};
+
+const VendorKycScreen = ({ navigation, route }: any) => {
+    const insets = useSafeAreaInsets();
+    const routeVendorId: string = route?.params?.vendorId ?? "";
+
+    const [initialLoading, setInitialLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [loading, setLoading] = useState(false);
+
+    const [vendorProfileId, setVendorProfileId] = useState(routeVendorId);
+    const [userId, setUserId] = useState("");
+    const [storeName, setStoreName] = useState("");
+
+    const [kycFiles, setKycFiles] = useState<KycFilesState>({});
+    const [existingDocs, setExistingDocs] = useState<ExistingKycState>({});
+
+    const [isKycSubmitted, setIsKycSubmitted] = useState(false);
+    const [isKycApproved, setIsKycApproved] = useState(false);
+    const [profileStatus, setProfileStatus] = useState("pending");
+
+    const [bankDetails, setBankDetails] = useState<BankDetails>({
+        accountHolder: "",
+        bankName: "",
+        accountNumber: "",
+        ifsc: "",
+    });
+
+    const [showAccountNumber, setShowAccountNumber] = useState(false);
+
+    const localUploadedCount = ALL_DOC_FIELDS.filter((field) => kycFiles[field]).length;
+    const submittedCount = ALL_DOC_FIELDS.filter((field) => existingDocs[field]).length;
+
+    const patchVendorProfileToState = useCallback((vendor: any) => {
+        if (!vendor) return;
+
+        setVendorProfileId(String(vendor.user));
+
+        if (vendor?.user) {
+            setUserId(String(vendor.user));
+        }
+
+        setStoreName(vendor?.storeName || "");
+
+        setIsKycSubmitted(!!vendor?.isKycSubmitted);
+        setIsKycApproved(!!vendor?.isKycApproved);
+        setProfileStatus(vendor?.profileStatus || "pending");
+
+        setBankDetails({
+            accountHolder: vendor?.bankDetails?.accountHolder || "",
+            bankName: vendor?.bankDetails?.bankName || "",
+            accountNumber: vendor?.bankDetails?.accountNumber || "",
+            ifsc: vendor?.bankDetails?.ifsc || "",
+        });
+
+        const docsFromVendor = buildExistingDocsFromKycObject(vendor?.kycDocuments);
+
+        setExistingDocs((prev) => ({
+            ...prev,
+            ...docsFromVendor,
+        }));
+    }, []);
+
+    const loadKycPreview = useCallback(async () => {
+        try {
+            console.log("CALLING VENDOR KYC PREVIEW API");
+
+            const res: any = await getRequest(
+                API_ENDPOINTS.VENDORKYCDOCUMENTSPREVIEW,
+                {},
+                true,
+                false
+            );
+
+            console.log("Vendor KYC preview response:", JSON.stringify(res));
+
+            if (!res?.success) return;
+
+            const previewData = normalizePreviewData(res);
+
+            if (!previewData) return;
+
+            setIsKycSubmitted(!!previewData?.isKycSubmitted);
+            setIsKycApproved(!!previewData?.isKycApproved);
+            setProfileStatus(previewData?.profileStatus || "pending");
+
+            if (previewData?.vendorId) {
+                setVendorProfileId(String(previewData.user));
+            }
+
+            if (previewData?.user) {
+                setUserId(String(previewData.user));
+            }
+
+            const docsFromPreview = buildExistingDocsFromPreviewArray(
+                previewData?.documents || []
+            );
+
+            console.log(
+                "Vendor preview docs count:",
+                Object.keys(docsFromPreview).length
+            );
+
+            setExistingDocs((prev) => ({
+                ...prev,
+                ...docsFromPreview,
+            }));
+        } catch (error: any) {
+            console.log("Vendor KYC preview load error:", error?.message || error);
+        }
+    }, []);
+
+    const loadVendorProfile = useCallback(
+        async (loggedUserId: string) => {
+            try {
+                if (!loggedUserId) return;
+
+                const res: any = await getRequest(
+                    `${API_ENDPOINTS.VENDORPROFILEGET}/${loggedUserId}`,
+                    {},
+                    true,
+                    false
+                );
+
+                console.log("Vendor profile response:", JSON.stringify(res));
+
+                if (!res?.success) {
+                    console.log("Vendor profile API failed:", res?.message || res);
+                    return;
+                }
+
+                const vendor = normalizeVendorProfileResponse(res);
+
+                if (!vendor) {
+                    console.log("Vendor profile data missing");
+                    return;
+                }
+
+                patchVendorProfileToState(vendor);
+
+                await loadKycPreview();
+            } catch (error: any) {
+                console.log("Vendor profile load error:", error?.message || error);
+            }
+        },
+        [patchVendorProfileToState, loadKycPreview]
+    );
+
+    const loadInitialData = useCallback(async () => {
+        try {
+            setInitialLoading(true);
+
+            const loggedUserId = await getLoggedUserIdFromStorage();
+
+            console.log("Vendor KYC logged user id:", loggedUserId);
+
+            if (loggedUserId) {
+                setUserId(loggedUserId);
+                await loadVendorProfile(loggedUserId);
+            }
+        } catch (error: any) {
+            console.log("Vendor KYC initial load error:", error?.message || error);
+        } finally {
+            setInitialLoading(false);
+        }
+    }, [loadVendorProfile]);
+
+    useFocusEffect(
+        useCallback(() => {
+            loadInitialData();
+        }, [loadInitialData])
+    );
+
+    const onRefresh = async () => {
+        try {
+            setRefreshing(true);
+
+            const loggedUserId = userId || (await getLoggedUserIdFromStorage());
+
+            if (loggedUserId) {
+                setUserId(loggedUserId);
+                await loadVendorProfile(loggedUserId);
+            }
+        } catch (error: any) {
+            console.log("Vendor KYC refresh error:", error?.message || error);
+        } finally {
+            setRefreshing(false);
+        }
+    };
+
+    const handlePreviewDocument = async (doc?: ExistingKycDocument) => {
+        try {
+            const url = doc?.previewUrl || doc?.fileUrl;
+
+            if (!url) {
+                showToast(
+                    "error",
+                    "Preview Not Available",
+                    "Document preview URL not found."
+                );
+                return;
+            }
+
+            const canOpen = await Linking.canOpenURL(url);
+
+            if (!canOpen) {
+                showToast("error", "Cannot Open", "Unable to open document preview.");
+                return;
+            }
+
+            await Linking.openURL(url);
+        } catch (error: any) {
+            showToast(
+                "error",
+                "Preview Failed",
+                error?.message || "Could not open document."
+            );
+        }
+    };
+
+    const applyPickerResult = (
+        res: ImagePickerResponse,
+        field: VendorKycDocField
+    ) => {
+        if (res.didCancel || res.errorCode) return;
+
+        const asset: Asset | undefined = res.assets?.[0];
+
+        if (!asset?.uri) return;
+
+        setKycFiles((prev) => ({
+            ...prev,
+            [field]: {
+                uri: asset.uri,
+                name: asset.fileName ?? `${field}_${Date.now()}.jpg`,
+                type: asset.type ?? "image/jpeg",
+            },
+        }));
+    };
+
+    const handlePickFile = useCallback((field: VendorKycDocField) => {
+        Alert.alert("Select Document", "Choose how you want to upload", [
+            {
+                text: "Camera",
+                onPress: () =>
+                    launchCamera(
+                        {
+                            mediaType: "photo",
+                            quality: 0.8,
+                            saveToPhotos: false,
+                        },
+                        (res) => applyPickerResult(res, field)
+                    ),
+            },
+            {
+                text: "Gallery",
+                onPress: () =>
+                    launchImageLibrary(
+                        {
+                            mediaType: "photo",
+                            quality: 0.8,
+                        },
+                        (res) => applyPickerResult(res, field)
+                    ),
+            },
+            {
+                text: "Cancel",
+                style: "cancel",
+            },
+        ]);
+    }, []);
+
+    const handleRemoveFile = useCallback((field: VendorKycDocField) => {
+        setKycFiles((prev) => {
+            const next = { ...prev };
+            delete next[field];
+            return next;
+        });
+    }, []);
+
+    const handleBankChange = (field: keyof BankDetails, value: string) => {
+        setBankDetails((prev) => ({
+            ...prev,
+            [field]: value,
+        }));
+    };
+
+    const hasDocForField = (field: VendorKycDocField) => {
+        return !!kycFiles[field] || !!existingDocs[field];
+    };
+
+    const validateForm = (): boolean => {
+        if (!vendorProfileId) {
+            showToast(
+                "error",
+                "Vendor Profile Missing",
+                "Please create your vendor profile first."
+            );
+            return false;
+        }
+
+        if (!bankDetails.accountHolder.trim()) {
+            showToast("error", "Bank Details", "Account holder name is required.");
+            return false;
+        }
+
+        if (!bankDetails.bankName.trim()) {
+            showToast("error", "Bank Details", "Bank name is required.");
+            return false;
+        }
+
+        if (!/^\d{9,18}$/.test(bankDetails.accountNumber.trim())) {
+            showToast(
+                "error",
+                "Bank Details",
+                "Enter a valid account number between 9 to 18 digits."
+            );
+            return false;
+        }
+
+        if (
+            !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(bankDetails.ifsc.trim().toUpperCase())
+        ) {
+            showToast("error", "Bank Details", "Enter valid IFSC code.");
+            return false;
+        }
+
+        for (const field of REQUIRED_DOC_FIELDS) {
+            if (!hasDocForField(field)) {
+                showToast(
+                    "error",
+                    `${KYC_DOC_CONFIG[field].label} Required`,
+                    `Please upload ${KYC_DOC_CONFIG[field].label}.`
+                );
+                return false;
+            }
+        }
+
+        return true;
+    };
+
+    const updateBankDetails = async () => {
+        if (!vendorProfileId) {
+            throw new Error(
+                "Vendor profile id not found. Please complete vendor profile first."
+            );
+        }
+
+        const payload = {
+            bankDetails: {
+                accountHolder: bankDetails.accountHolder.trim(),
+                bankName: bankDetails.bankName.trim(),
+                accountNumber: bankDetails.accountNumber.trim(),
+                ifsc: bankDetails.ifsc.trim().toUpperCase(),
+            },
+        };
+
+        const res: any = await putRequest(
+            `${API_ENDPOINTS.VENDORPROFILEUPDATE}/${vendorProfileId}`,
+            payload,
+            true
+        );
+
+        if (!res?.success) {
+            throw new Error(res?.message || "Vendor bank details update failed");
+        }
+
+        const updatedVendor = normalizeVendorProfileResponse(res);
+
+        if (updatedVendor) {
+            patchVendorProfileToState(updatedVendor);
+        }
+
+        return res;
+    };
+
+    const uploadKycDocuments = async () => {
+        const selectedFields = ALL_DOC_FIELDS.filter((field) => !!kycFiles[field]);
+
+        if (!selectedFields.length) {
+            return null;
+        }
+
+        const formData = new FormData();
+
+        selectedFields.forEach((field) => {
+            const file = kycFiles[field];
+
+            if (!file) return;
+
+            formData.append(field, {
+                uri: file.uri,
+                name: file.name,
+                type: file.type,
+            } as any);
+        });
+
+        const kycRes: any = await uploadRequest(
+            API_ENDPOINTS.VENDORKYCDOCUMENTSUPLOAD,
+            formData,
+            true
+        );
+
+        if (!kycRes?.success) {
+            throw new Error(kycRes?.message || "Vendor KYC document upload failed");
+        }
+
+        return kycRes;
+    };
+
+    const handleSubmit = async () => {
+        if (!validateForm()) return;
+
+        setLoading(true);
+
+        try {
+            await updateBankDetails();
+            await uploadKycDocuments();
+
+            const loggedUserId = userId || (await getLoggedUserIdFromStorage());
+
+            if (loggedUserId) {
+                await loadVendorProfile(loggedUserId);
+            } else {
+                await loadKycPreview();
+            }
+
+            setKycFiles({});
+
+            showToast(
+                "success",
+                "Vendor KYC Submitted",
+                "Your documents are under review."
+            );
+        } catch (error: any) {
+            showToast(
+                "error",
+                "Submission Failed",
+                error?.message || "Something went wrong. Please try again."
+            );
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const isSubmitEnabled =
+        !!vendorProfileId &&
+        bankDetails.accountHolder.trim().length > 0 &&
+        bankDetails.bankName.trim().length > 0 &&
+        bankDetails.accountNumber.trim().length > 0 &&
+        bankDetails.ifsc.trim().length > 0 &&
+        REQUIRED_DOC_FIELDS.every((field) => hasDocForField(field)) &&
+        !loading;
+
+    if (initialLoading) {
+        return (
+            <SafeAreaView style={screenStyles.loaderRoot}>
+                <AppBar title="Vendor KYC" onBack={() => navigation.goBack()} />
+
+                <View style={screenStyles.loaderCenter}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={screenStyles.loaderText}>Loading vendor profile...</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    return (
+        <SafeAreaView
+            style={{ flex: 1, backgroundColor: colors.scaffoldBg }}
+            edges={["bottom"]}
+        >
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+            >
+                <AppBar title="Vendor KYC" onBack={() => navigation.goBack()} />
+
+                <ScrollView
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                    automaticallyAdjustKeyboardInsets
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                    }
+                >
+                    <PageHeader
+                        isKycSubmitted={isKycSubmitted}
+                        isKycApproved={isKycApproved}
+                        profileStatus={profileStatus}
+                        storeName={storeName}
+                    />
+
+                    <View style={localStyles.card}>
+                        <Text style={localStyles.sectionLabel}>Bank Details</Text>
+
+                        <View style={localStyles.infoBox}>
+                            <Ionicons
+                                name="lock-closed-outline"
+                                size={16}
+                                color={colors.primary}
+                            />
+                            <Text style={localStyles.infoText}>
+                                Bank details are securely stored and used only for vendor
+                                payout settlement.
+                            </Text>
+                        </View>
+
+                        <FloatingInput
+                            label="Account Holder Name *"
+                            placeholder="As per bank records"
+                            value={bankDetails.accountHolder}
+                            onChangeText={(text: string) =>
+                                handleBankChange("accountHolder", text)
+                            }
+                            rightIcon={
+                                <Ionicons
+                                    name="person-outline"
+                                    size={18}
+                                    color={colors.placeholder}
+                                />
+                            }
+                        />
+
+                        <FloatingInput
+                            label="Bank Name *"
+                            placeholder="e.g. State Bank of India"
+                            value={bankDetails.bankName}
+                            onChangeText={(text: string) =>
+                                handleBankChange("bankName", text)
+                            }
+                            rightIcon={
+                                <Ionicons
+                                    name="business-outline"
+                                    size={18}
+                                    color={colors.placeholder}
+                                />
+                            }
+                        />
+
+                        <View style={accountInputStyles.wrapper}>
+                            <Text style={accountInputStyles.label}>Account Number *</Text>
+
+                            <View style={accountInputStyles.inputBox}>
+                                <TextInput
+                                    value={bankDetails.accountNumber}
+                                    onChangeText={(text: string) =>
+                                        handleBankChange("accountNumber", text.replace(/\D/g, ""))
+                                    }
+                                    placeholder="9 to 18 digit account number"
+                                    placeholderTextColor={colors.placeholder}
+                                    keyboardType="numeric"
+                                    secureTextEntry={!showAccountNumber}
+                                    style={accountInputStyles.input}
+                                />
+
+                                <TouchableOpacity
+                                    onPress={() => setShowAccountNumber((prev) => !prev)}
+                                    activeOpacity={0.7}
+                                    style={accountInputStyles.eyeBtn}
+                                    hitSlop={{
+                                        top: 10,
+                                        bottom: 10,
+                                        left: 10,
+                                        right: 10,
+                                    }}
+                                >
+                                    <Ionicons
+                                        name={showAccountNumber ? "eye-off-outline" : "eye-outline"}
+                                        size={22}
+                                        color={colors.placeholder}
+                                    />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
+                        <FloatingInput
+                            label="IFSC Code *"
+                            placeholder="e.g. SBIN0001234"
+                            value={bankDetails.ifsc}
+                            onChangeText={(text: string) =>
+                                handleBankChange(
+                                    "ifsc",
+                                    text.toUpperCase().replace(/\s/g, "")
+                                )
+                            }
+                            autoCapitalize="characters"
+                            rightIcon={
+                                <Ionicons
+                                    name="barcode-outline"
+                                    size={18}
+                                    color={colors.placeholder}
+                                />
+                            }
+                        />
+                    </View>
+
+                    <View style={localStyles.sectionDivider} />
+
+                    <View style={localStyles.card}>
+                        <Text style={localStyles.sectionLabel}>KYC Documents</Text>
+
+                        <KycProgress
+                            uploaded={localUploadedCount}
+                            submitted={submittedCount}
+                            total={ALL_DOC_FIELDS.length}
+                        />
+
+                        <View style={localStyles.infoBox}>
+                            <Ionicons
+                                name="information-circle-outline"
+                                size={16}
+                                color={colors.primary}
+                            />
+                            <Text style={localStyles.infoText}>
+                                Aadhaar Card and PAN Card are mandatory. Other business
+                                documents help speed up vendor verification.
+                            </Text>
+                        </View>
+
+                        <View style={localStyles.warningBox}>
+                            <Ionicons name="warning-outline" size={16} color="#D97706" />
+                            <Text style={localStyles.warningText}>
+                                Upload clear, high-quality documents. Blurry or cropped
+                                documents may be rejected. Preview links are temporary and
+                                may expire after a few minutes.
+                            </Text>
+                        </View>
+
+                        {ALL_DOC_FIELDS.map((field) => (
+                            <DocumentUploadCard
+                                key={field}
+                                field={field}
+                                file={kycFiles[field]}
+                                existingDoc={existingDocs[field]}
+                                onPick={handlePickFile}
+                                onRemove={handleRemoveFile}
+                                onPreview={handlePreviewDocument}
+                            />
+                        ))}
+
+                        <TouchableOpacity
+                            style={[
+                                screenStyles.primaryBtn,
+                                !isSubmitEnabled && screenStyles.primaryBtnDisabled,
+                            ]}
+                            onPress={handleSubmit}
+                            disabled={!isSubmitEnabled}
+                            activeOpacity={0.85}
+                        >
+                            {loading ? (
+                                <ActivityIndicator color="#fff" />
+                            ) : (
+                                <>
+                                    <Ionicons
+                                        name="shield-checkmark-outline"
+                                        size={18}
+                                        color="#fff"
+                                        style={{ marginRight: 8 }}
+                                    />
+                                    <Text style={screenStyles.primaryBtnText}>
+                                        {isKycSubmitted ? "Update Vendor KYC" : "Submit Vendor KYC"}
+                                    </Text>
+                                </>
+                            )}
+                        </TouchableOpacity>
+
+                        <Text style={screenStyles.disclaimer}>
+                            By submitting, you confirm that the provided bank details
+                            and documents are authentic.
+                        </Text>
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
+        </SafeAreaView>
+    );
+};
 
 const headerStyles = StyleSheet.create({
     container: {
@@ -199,112 +1314,24 @@ const headerStyles = StyleSheet.create({
         lineHeight: 21,
         fontWeight: "400",
     },
+    statusBox: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        backgroundColor: "#fff",
+        borderWidth: 1,
+        borderColor: colors.formBorder,
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        marginTop: 16,
+    },
+    statusText: {
+        fontSize: 13,
+        fontWeight: "700",
+        color: colors.secondary,
+    },
 });
-
-// ─── Document Upload Card ─────────────────────────────────────────────────────
-
-const DocumentUploadCard = ({
-    field,
-    file,
-    onPick,
-    onRemove,
-}: {
-    field: KycDocField;
-    file?: UploadedFile;
-    onPick: (field: KycDocField) => void;
-    onRemove: (field: KycDocField) => void;
-}) => {
-    const config = KYC_DOC_CONFIG[field];
-    const isUploaded = !!file;
-
-    return (
-        <View
-            style={[
-                docStyles.card,
-                isUploaded
-                    ? docStyles.cardUploaded
-                    : config.required
-                        ? docStyles.cardRequired
-                        : null,
-            ]}
-        >
-            {/* Header */}
-            <View style={docStyles.header}>
-                <View style={[docStyles.iconBg, isUploaded && docStyles.iconBgUploaded]}>
-                    <Ionicons
-                        name={(isUploaded ? "checkmark-outline" : config.icon) as any}
-                        size={20}
-                        color={isUploaded ? "#fff" : colors.primary}
-                    />
-                </View>
-
-                <View style={{ flex: 1 }}>
-                    <View style={docStyles.labelRow}>
-                        <Text style={docStyles.docLabel}>{config.label}</Text>
-                        <View
-                            style={[
-                                docStyles.badge,
-                                config.required ? docStyles.badgeRequired : docStyles.badgeOptional,
-                            ]}
-                        >
-                            <Text
-                                style={[
-                                    docStyles.badgeText,
-                                    config.required
-                                        ? docStyles.badgeTextRequired
-                                        : docStyles.badgeTextOptional,
-                                ]}
-                            >
-                                {config.required ? "Required" : "Optional"}
-                            </Text>
-                        </View>
-                    </View>
-                    <Text style={docStyles.hint}>{config.hint}</Text>
-                </View>
-            </View>
-
-            {/* Upload area */}
-            {isUploaded ? (
-                <View style={docStyles.uploadedRow}>
-                    {file.type.startsWith("image/") ? (
-                        <Image
-                            source={{ uri: file.uri }}
-                            style={docStyles.thumb}
-                            resizeMode="cover"
-                        />
-                    ) : (
-                        <View style={docStyles.pdfPreview}>
-                            <Ionicons name="document-outline" size={22} color={colors.primary} />
-                        </View>
-                    )}
-                    <View style={{ flex: 1 }}>
-                        <Text style={docStyles.fileName} numberOfLines={1}>
-                            {file.name}
-                        </Text>
-                        <Text style={docStyles.fileStatus}>✓ Ready to upload</Text>
-                    </View>
-                    <TouchableOpacity
-                        onPress={() => onRemove(field)}
-                        style={docStyles.removeBtn}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                        <Ionicons name="close-circle" size={22} color="#EF4444" />
-                    </TouchableOpacity>
-                </View>
-            ) : (
-                <TouchableOpacity
-                    style={docStyles.uploadBtn}
-                    onPress={() => onPick(field)}
-                    activeOpacity={0.7}
-                >
-                    <Ionicons name="cloud-upload-outline" size={18} color={colors.primary} />
-                    <Text style={docStyles.uploadBtnText}>Select File</Text>
-                    <Text style={docStyles.uploadFormats}>JPG · PNG · PDF</Text>
-                </TouchableOpacity>
-            )}
-        </View>
-    );
-};
 
 const docStyles = StyleSheet.create({
     card: {
@@ -322,6 +1349,10 @@ const docStyles = StyleSheet.create({
     cardUploaded: {
         borderColor: "#86EFAC",
         backgroundColor: "#F0FDF4",
+    },
+    cardRejected: {
+        borderColor: "#FCA5A5",
+        backgroundColor: "#FEF2F2",
     },
     header: {
         flexDirection: "row",
@@ -357,16 +1388,46 @@ const docStyles = StyleSheet.create({
         paddingHorizontal: 6,
         paddingVertical: 2,
     },
-    badgeRequired: { backgroundColor: "#FEE2E2" },
-    badgeOptional: { backgroundColor: "#F1F5F9" },
-    badgeText: { fontSize: 10, fontWeight: "700" },
-    badgeTextRequired: { color: "#DC2626" },
-    badgeTextOptional: { color: "#64748B" },
+    badgeRequired: {
+        backgroundColor: "#FEE2E2",
+    },
+    badgeOptional: {
+        backgroundColor: "#F1F5F9",
+    },
+    badgeText: {
+        fontSize: 10,
+        fontWeight: "700",
+    },
+    badgeTextRequired: {
+        color: "#DC2626",
+    },
+    badgeTextOptional: {
+        color: "#64748B",
+    },
+    statusBadge: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 3,
+        borderRadius: 6,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+    },
+    statusBadgeText: {
+        fontSize: 10,
+        fontWeight: "800",
+    },
     hint: {
         fontSize: 12,
         color: colors.placeholder,
         marginTop: 3,
         lineHeight: 16,
+    },
+    rejectReason: {
+        fontSize: 12,
+        color: "#DC2626",
+        marginTop: 6,
+        lineHeight: 16,
+        fontWeight: "600",
     },
     uploadBtn: {
         flexDirection: "row",
@@ -385,7 +1446,10 @@ const docStyles = StyleSheet.create({
         fontWeight: "600",
         color: colors.primary,
     },
-    uploadFormats: { fontSize: 11, color: colors.placeholder },
+    uploadFormats: {
+        fontSize: 11,
+        color: colors.placeholder,
+    },
     uploadedRow: {
         flexDirection: "row",
         alignItems: "center",
@@ -394,7 +1458,12 @@ const docStyles = StyleSheet.create({
         borderRadius: 10,
         padding: 10,
     },
-    thumb: { width: 44, height: 44, borderRadius: 8 },
+    thumb: {
+        width: 44,
+        height: 44,
+        borderRadius: 8,
+        backgroundColor: "#E2E8F0",
+    },
     pdfPreview: {
         width: 44,
         height: 44,
@@ -403,52 +1472,110 @@ const docStyles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
     },
-    fileName: { fontSize: 13, fontWeight: "600", color: colors.secondary },
-    fileStatus: { fontSize: 12, color: "#16A34A", fontWeight: "500", marginTop: 2 },
-    removeBtn: { padding: 2 },
+    fileName: {
+        fontSize: 13,
+        fontWeight: "600",
+        color: colors.secondary,
+    },
+    fileStatus: {
+        fontSize: 12,
+        color: "#16A34A",
+        fontWeight: "500",
+        marginTop: 2,
+    },
+    removeBtn: {
+        padding: 2,
+    },
+    submittedBox: {
+        backgroundColor: "#F8FAFC",
+        borderRadius: 10,
+        padding: 10,
+        borderWidth: 1,
+        borderColor: "#E2E8F0",
+    },
+    submittedLeft: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+    },
+    actionRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        marginTop: 10,
+    },
+    previewBtn: {
+        flex: 1,
+        borderWidth: 1,
+        borderColor: colors.primary,
+        borderRadius: 9,
+        paddingVertical: 9,
+        alignItems: "center",
+        justifyContent: "center",
+        flexDirection: "row",
+        gap: 5,
+        backgroundColor: "#EFF6FF",
+    },
+    previewBtnText: {
+        color: colors.primary,
+        fontSize: 12,
+        fontWeight: "800",
+    },
+    replaceBtn: {
+        flex: 1,
+        borderWidth: 1,
+        borderColor: "#FBBF24",
+        borderRadius: 9,
+        paddingVertical: 9,
+        alignItems: "center",
+        justifyContent: "center",
+        flexDirection: "row",
+        gap: 5,
+        backgroundColor: "#FFFBEB",
+    },
+    replaceBtnText: {
+        color: "#D97706",
+        fontSize: 12,
+        fontWeight: "800",
+    },
 });
 
-// ─── Progress Indicator ───────────────────────────────────────────────────────
-
-const KycProgress = ({ uploaded, total }: { uploaded: number; total: number }) => {
-    const pct = total === 0 ? 0 : Math.round((uploaded / total) * 100);
-    const remaining = total - uploaded;
-    return (
-        <View style={progressStyles.container}>
-            <View style={progressStyles.row}>
-                <Text style={progressStyles.label}>Documents Uploaded</Text>
-                <Text style={progressStyles.count}>
-                    {uploaded} / {total}
-                </Text>
-            </View>
-            <View style={progressStyles.track}>
-                <View style={[progressStyles.fill, { width: `${pct}%` as any }]} />
-            </View>
-            <Text style={progressStyles.sub}>
-                {remaining === 0
-                    ? "All documents uploaded"
-                    : `${remaining} optional document${remaining > 1 ? "s" : ""} remaining`}
-            </Text>
-        </View>
-    );
-};
-
 const progressStyles = StyleSheet.create({
-    container: { marginBottom: 20 },
-    row: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
-    label: { fontSize: 13, fontWeight: "600", color: colors.secondary },
-    count: { fontSize: 13, fontWeight: "700", color: colors.primary },
+    container: {
+        marginBottom: 20,
+    },
+    row: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        marginBottom: 6,
+    },
+    label: {
+        fontSize: 13,
+        fontWeight: "600",
+        color: colors.secondary,
+    },
+    count: {
+        fontSize: 13,
+        fontWeight: "700",
+        color: colors.primary,
+    },
     track: {
         height: 6,
         backgroundColor: colors.formBorder,
         borderRadius: 4,
         overflow: "hidden",
     },
-    fill: { height: "100%", backgroundColor: colors.primary, borderRadius: 4 },
-    sub: { fontSize: 11, color: colors.placeholder, marginTop: 5 },
+    fill: {
+        height: "100%",
+        backgroundColor: colors.primary,
+        borderRadius: 4,
+    },
+    sub: {
+        fontSize: 11,
+        color: colors.placeholder,
+        marginTop: 5,
+    },
 });
-
-// ─── Shared styles ────────────────────────────────────────────────────────────
 
 const localStyles = StyleSheet.create({
     card: {
@@ -507,544 +1634,23 @@ const localStyles = StyleSheet.create({
     },
 });
 
-// ─── Main Screen ──────────────────────────────────────────────────────────────
-
-const VendorKycScreen = ({ navigation, route }: any) => {
-    const insets = useSafeAreaInsets();
-    const vendorId: string = route?.params?.vendorId ?? "";
-    const [initialLoading, setInitialLoading] = useState(true);
-    const [loading, setLoading] = useState(false);
-    const [kycFiles, setKycFiles] = useState<KycFilesState>({});
-    const [bankDetails, setBankDetails] = useState<BankDetails>({
-        accountHolder: "",
-        bankName: "",
-        accountNumber: "",
-        ifsc: "",
-    });
-    const [otherDocs, setOtherDocs] = useState<OtherDocument[]>([]);
-    const [otherDocLabel, setOtherDocLabel] = useState("");
-
-    const uploadedCount = ALL_DOC_FIELDS.filter((d) => kycFiles[d]).length;
-
-    // ── File Picker ──────────────────────────────────────────────────────────
-
-    const handlePickFile = useCallback((field: KycDocField) => {
-        Alert.alert("Select Document", "Choose how you want to upload", [
-            {
-                text: "Camera",
-                onPress: () =>
-                    launchCamera(
-                        { mediaType: "photo", quality: 0.8, saveToPhotos: false },
-                        (res: ImagePickerResponse) => applyPickerResult(res, field)
-                    ),
-            },
-            {
-                text: "Gallery",
-                onPress: () =>
-                    launchImageLibrary(
-                        { mediaType: "mixed", quality: 0.8 },
-                        (res: ImagePickerResponse) => applyPickerResult(res, field)
-                    ),
-            },
-            { text: "Cancel", style: "cancel" },
-        ]);
-    }, []);
-    useEffect(() => {
-        loadUser();
-    }, []);
-    const loadUser = async () => {
-        try {
-            const { user } = await getUserData();
-
-            if (user?.user?._id) {
-                const res: any = await getRequest(
-                    `${API_ENDPOINTS.VENDORPROFILEGET}/${user.user._id}`
-                );
-
-                if (res?.success) {
-                    const vendor = res.data.vendor;
-
-                    // ✅ PATCH BANK DETAILS
-                    if (vendor?.bankDetails) {
-                        setBankDetails({
-                            accountHolder: vendor.bankDetails.accountHolder || "",
-                            bankName: vendor.bankDetails.bankName || "",
-                            accountNumber: vendor.bankDetails.accountNumber || "",
-                            ifsc: vendor.bankDetails.ifsc || "",
-                        });
-                    }
-
-                    // (Optional future) mark KYC already submitted
-                    if (vendor?.isKycSubmitted) {
-                        console.log("KYC already submitted");
-                    }
-                }
-            }
-        } catch (err) {
-            console.log("KYC load error:", err);
-        } finally {
-            setInitialLoading(false);
-        }
-    };
-    const applyPickerResult = (res: ImagePickerResponse, field: KycDocField) => {
-        if (res.didCancel || res.errorCode) return;
-        const asset: Asset | undefined = res.assets?.[0];
-        if (!asset?.uri) return;
-        setKycFiles((prev) => ({
-            ...prev,
-            [field]: {
-                uri: asset.uri!,
-                name: asset.fileName ?? `${field}_${Date.now()}.jpg`,
-                type: asset.type ?? "image/jpeg",
-            },
-        }));
-    };
-
-    const handleRemoveFile = useCallback((field: KycDocField) => {
-        setKycFiles((prev) => {
-            const next = { ...prev };
-            delete next[field];
-            return next;
-        });
-    }, []);
-
-    const handleAddOtherDoc = useCallback(() => {
-        if (!otherDocLabel.trim()) {
-            Toast.show({ type: "error", text1: "Label Required", text2: "Enter a name for this document" });
-            return;
-        }
-        Alert.alert("Select Document", "Choose how you want to upload", [
-            {
-                text: "Camera",
-                onPress: () =>
-                    launchCamera({ mediaType: "photo", quality: 0.8 }, (res) =>
-                        applyOtherDoc(res)
-                    ),
-            },
-            {
-                text: "Gallery",
-                onPress: () =>
-                    launchImageLibrary({ mediaType: "mixed", quality: 0.8 }, (res) =>
-                        applyOtherDoc(res)
-                    ),
-            },
-            { text: "Cancel", style: "cancel" },
-        ]);
-    }, [otherDocLabel]);
-
-    const applyOtherDoc = (res: ImagePickerResponse) => {
-        if (res.didCancel || res.errorCode) return;
-        const asset = res.assets?.[0];
-        if (!asset?.uri) return;
-        setOtherDocs((prev) => [
-            ...prev,
-            {
-                id: Date.now().toString(),
-                label: otherDocLabel.trim(),
-                file: {
-                    uri: asset.uri!,
-                    name: asset.fileName ?? `other_${Date.now()}.jpg`,
-                    type: asset.type ?? "image/jpeg",
-                },
-            },
-        ]);
-        setOtherDocLabel("");
-    };
-
-    const handleRemoveOtherDoc = useCallback((id: string) => {
-        setOtherDocs((prev) => prev.filter((d) => d.id !== id));
-    }, []);
-
-    // ── Bank Detail Change ────────────────────────────────────────────────────
-
-    const handleBankChange = (field: keyof BankDetails, value: string) => {
-        setBankDetails((prev) => ({ ...prev, [field]: value }));
-    };
-
-    // ── Validation ────────────────────────────────────────────────────────────
-
-    const validateForm = (): boolean => {
-        if (!kycFiles["panCard"]) {
-            Toast.show({
-                type: "error",
-                text1: "PAN Card Required",
-                text2: "Please upload your PAN card to proceed",
-            });
-            return false;
-        }
-        if (!kycFiles["aadhaarCard"]) {
-            Toast.show({
-                type: "error",
-                text1: "Aadhaar Card Required",
-                text2: "Please upload your Aadhaar card to proceed",
-            });
-            return false;
-        }
-        if (!bankDetails.accountHolder.trim()) {
-            Toast.show({ type: "error", text1: "Bank Details", text2: "Account holder name is required" });
-            return false;
-        }
-        if (!bankDetails.bankName.trim()) {
-            Toast.show({ type: "error", text1: "Bank Details", text2: "Bank name is required" });
-            return false;
-        }
-        if (!/^\d{9,18}$/.test(bankDetails.accountNumber.trim())) {
-            Toast.show({
-                type: "error",
-                text1: "Bank Details",
-                text2: "Enter a valid account number (9–18 digits)",
-            });
-            return false;
-        }
-        if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(bankDetails.ifsc.trim().toUpperCase())) {
-            Toast.show({
-                type: "error",
-                text1: "Bank Details",
-                text2: "Enter a valid IFSC code (e.g. SBIN0123456)",
-            });
-            return false;
-        }
-        return true;
-    };
-
-    // ── Submit ────────────────────────────────────────────────────────────────
-
-    const handleSubmit = async () => {
-        if (!validateForm()) return;
-
-        let id = vendorId;
-        if (!id) {
-            const { user } = await getUserData();
-            id = user?.user?._id ?? "";
-        }
-
-        if (!id) {
-            Toast.show({
-                type: "error",
-                text1: "Error",
-                text2: "Vendor ID not found. Please re-login.",
-            });
-            return;
-        }
-
-        setLoading(true);
-
-        try {
-            // ── Step 1: Upload KYC Documents ────────────────────────────────
-            const formData = new FormData();
-            (Object.keys(kycFiles) as KycDocField[]).forEach((field) => {
-                const file = kycFiles[field];
-                if (!file) return;
-
-                // Backend expects all files under "kycDocuments"
-                formData.append("kycDocuments", {
-                    uri: file.uri,
-                    name: file.name,
-                    type: file.type,
-                } as any);
-            });
-
-            otherDocs.forEach((doc) => {
-                formData.append("kycDocuments", {
-                    uri: doc.file.uri,
-                    name: doc.file.name,
-                    type: doc.file.type,
-                } as any);
-            });
-
-
-            const kycRes = await uploadRequest(
-                `${API_ENDPOINTS.VENDORKYCDOCUMENTSUPLOAD}`,
-                formData
-            );
-
-            if (!kycRes?.success) {
-                Toast.show({
-                    type: "error",
-                    text1: "KYC Upload Failed",
-                    text2: kycRes?.message || "Could not submit documents",
-                });
-                setLoading(false);
-                return;
-            }
-
-            const bankRes: any = await putRequest(
-                `${API_ENDPOINTS.VENDORPROFILEUPDATE}/${id}`,
-                {
-                    bankDetails: {
-                        accountHolder: bankDetails.accountHolder.trim(),
-                        bankName: bankDetails.bankName.trim(),
-                        accountNumber: bankDetails.accountNumber.trim(),
-                        ifsc: bankDetails.ifsc.trim().toUpperCase(),
-                    },
-                }
-            );
-
-            setLoading(false);
-
-            if (bankRes?.success) {
-                Toast.show({
-                    type: "success",
-                    text1: "KYC Submitted!",
-                    text2: "Your documents are under review.",
-                });
-                navigation.goBack();
-            } else {
-                Toast.show({
-                    type: "error",
-                    text1: "Bank Update Failed",
-                    text2:
-                        bankRes?.message ||
-                        "Documents saved but bank details failed. Please retry.",
-                });
-            }
-        } catch (err: any) {
-            setLoading(false);
-            Toast.show({
-                type: "error",
-                text1: "Error",
-                text2: err?.message || "Something went wrong. Please try again.",
-            });
-        }
-    };
-
-    const isSubmitEnabled =
-        !!kycFiles["aadhaarCard"] &&
-        !!kycFiles["panCard"] &&           // ← add this
-        bankDetails.accountHolder.trim().length > 0 &&
-        bankDetails.bankName.trim().length > 0 &&
-        bankDetails.accountNumber.trim().length > 0 &&
-        bankDetails.ifsc.trim().length > 0 &&
-        !loading;
-
-    return (
-        <SafeAreaView
-            style={{ flex: 1, backgroundColor: colors.scaffoldBg }}
-            edges={["bottom"]}
-        >
-            <KeyboardAvoidingView
-                style={{ flex: 1 }}
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
-                keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
-            >
-                <AppBar title="KYC Verification" onBack={() => navigation.goBack()} />
-
-                <ScrollView
-                    style={{ flex: 1 }}
-                    contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}
-                    keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator={false}
-                    automaticallyAdjustKeyboardInsets
-                >
-                    <PageHeader />
-
-                    {/* ── Bank Details ───────────────────────────────────────── */}
-                    <View style={localStyles.card}>
-                        <Text style={localStyles.sectionLabel}>Bank Details</Text>
-
-                        <View style={localStyles.infoBox}>
-                            <Ionicons name="lock-closed-outline" size={16} color={colors.primary} />
-                            <Text style={localStyles.infoText}>
-                                Your bank details are securely stored and used only for payouts.
-                            </Text>
-                        </View>
-
-                        <FloatingInput
-                            label="Account Holder Name *"
-                            placeholder="As per bank records"
-                            value={bankDetails.accountHolder}
-                            onChangeText={(t: string) => handleBankChange("accountHolder", t)}
-                            rightIcon={
-                                <Ionicons name="person-outline" size={18} color={colors.placeholder} />
-                            }
-                        />
-
-                        <FloatingInput
-                            label="Bank Name *"
-                            placeholder="e.g. State Bank of India"
-                            value={bankDetails.bankName}
-                            onChangeText={(t: string) => handleBankChange("bankName", t)}
-                            rightIcon={
-                                <Ionicons name="business-outline" size={18} color={colors.placeholder} />
-                            }
-                        />
-
-                        <FloatingInput
-                            label="Account Number *"
-                            placeholder="9 to 18 digit account number"
-                            value={bankDetails.accountNumber}
-                            onChangeText={(t: string) =>
-                                handleBankChange("accountNumber", t.replace(/\D/g, ""))
-                            }
-                            keyboardType="numeric"
-                            secureTextEntry
-                            rightIcon={
-                                <Ionicons name="key-outline" size={18} color={colors.placeholder} />
-                            }
-                        />
-
-                        <FloatingInput
-                            label="IFSC Code *"
-                            placeholder="e.g. SBIN0001234"
-                            value={bankDetails.ifsc}
-                            onChangeText={(t: string) =>
-                                handleBankChange("ifsc", t.toUpperCase().replace(/\s/g, ""))
-                            }
-                            autoCapitalize="characters"
-                            rightIcon={
-                                <Ionicons name="barcode-outline" size={18} color={colors.placeholder} />
-                            }
-                        />
-                    </View>
-
-                    <View style={localStyles.sectionDivider} />
-
-                    {/* ── KYC Documents ──────────────────────────────────────── */}
-                    <View style={localStyles.card}>
-                        <Text style={localStyles.sectionLabel}>KYC Documents</Text>
-
-                        <KycProgress
-                            uploaded={uploadedCount}
-                            total={ALL_DOC_FIELDS.length}
-                        />
-
-                        <View style={localStyles.infoBox}>
-                            <Ionicons
-                                name="information-circle-outline"
-                                size={16}
-                                color={colors.primary}
-                            />
-                            <Text style={localStyles.infoText}>
-                                Aadhaar Card is mandatory. All other documents are optional but help
-                                speed up account verification.
-                            </Text>
-                        </View>
-
-                        <View style={localStyles.warningBox}>
-                            <Ionicons name="warning-outline" size={16} color="#D97706" />
-                            <Text style={localStyles.warningText}>
-                                Upload clear, high-quality images. Blurry or cropped documents will
-                                be rejected.
-                            </Text>
-                        </View>
-
-                        {ALL_DOC_FIELDS.map((field) => (
-                            <DocumentUploadCard
-                                key={field}
-                                field={field}
-                                file={kycFiles[field]}
-                                onPick={handlePickFile}
-                                onRemove={handleRemoveFile}
-                            />
-                        ))}
-
-                        {/* ── Other Documents ── */}
-                        <View style={{ marginTop: 8, marginBottom: 4 }}>
-                            <View style={localStyles.sectionDivider} />
-                            <Text style={otherSectionStyles.sectionLabel}>Other Documents (Optional)</Text>
-
-                            <View style={localStyles.infoBox}>
-                                <Ionicons name="attach-outline" size={16} color={colors.primary} />
-                                <Text style={localStyles.infoText}>
-                                    Add any additional documents relevant to your business (e.g. Partnership Deed, NOC).
-                                </Text>
-                            </View>
-
-                            {/* Label + Pick button */}
-                            <View style={otherSectionStyles.inputRow}>
-                                <TextInput
-                                    style={otherSectionStyles.labelInput}
-                                    placeholder="Document name (e.g. NOC)"
-                                    placeholderTextColor={colors.placeholder}
-                                    value={otherDocLabel}
-                                    onChangeText={setOtherDocLabel}
-                                />
-                                <TouchableOpacity
-                                    style={otherSectionStyles.addBtn}
-                                    onPress={handleAddOtherDoc}
-                                    activeOpacity={0.8}
-                                >
-                                    <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
-                                    <Text style={otherSectionStyles.addBtnText}>Pick</Text>
-                                </TouchableOpacity>
-                            </View>
-
-                            {/* Uploaded other docs list */}
-                            {otherDocs.length === 0 ? (
-                                <Text style={otherSectionStyles.emptyHint}>
-                                    No extra documents added yet
-                                </Text>
-                            ) : (
-                                otherDocs.map((doc) => (
-                                    <View key={doc.id} style={otherSectionStyles.docRow}>
-                                        {doc.file.type.startsWith("image/") ? (
-                                            <Image
-                                                source={{ uri: doc.file.uri }}
-                                                style={otherSectionStyles.thumb}
-                                                resizeMode="cover"
-                                            />
-                                        ) : (
-                                            <View style={otherSectionStyles.pdfPreview}>
-                                                <Ionicons name="document-outline" size={22} color={colors.primary} />
-                                            </View>
-                                        )}
-                                        <View style={otherSectionStyles.docInfo}>
-                                            <Text style={otherSectionStyles.docLabel}>{doc.label}</Text>
-                                            <Text style={otherSectionStyles.docName} numberOfLines={1}>
-                                                {doc.file.name}
-                                            </Text>
-                                        </View>
-                                        <TouchableOpacity
-                                            style={otherSectionStyles.removeBtn}
-                                            onPress={() => handleRemoveOtherDoc(doc.id)}
-                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                        >
-                                            <Ionicons name="close-circle" size={22} color="#EF4444" />
-                                        </TouchableOpacity>
-                                    </View>
-                                ))
-                            )}
-                        </View>
-
-                        {/* ── Submit Button ── */}
-                        <TouchableOpacity
-                            style={[
-                                screenStyles.primaryBtn,
-                                !isSubmitEnabled && screenStyles.primaryBtnDisabled,
-                            ]}
-                            onPress={handleSubmit}
-                            disabled={!isSubmitEnabled}
-                            activeOpacity={0.85}
-                        >
-                            {loading ? (
-                                <ActivityIndicator color="#fff" />
-                            ) : (
-                                <>
-                                    <Ionicons
-                                        name="shield-checkmark-outline"
-                                        size={18}
-                                        color="#fff"
-                                        style={{ marginRight: 8 }}
-                                    />
-                                    <Text style={screenStyles.primaryBtnText}>
-                                        Submit KYC for Review
-                                    </Text>
-                                </>
-                            )}
-                        </TouchableOpacity>
-
-                        <Text style={screenStyles.disclaimer}>
-                            By submitting, you confirm that all provided documents are authentic
-                            and belong to your business.
-                        </Text>
-                    </View>
-                </ScrollView>
-            </KeyboardAvoidingView>
-        </SafeAreaView>
-    );
-};
-
 const screenStyles = StyleSheet.create({
+    loaderRoot: {
+        flex: 1,
+        backgroundColor: colors.scaffoldBg,
+    },
+    loaderCenter: {
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingHorizontal: 24,
+    },
+    loaderText: {
+        marginTop: 12,
+        fontSize: 14,
+        color: colors.placeholder,
+        fontWeight: "600",
+    },
     primaryBtn: {
         backgroundColor: colors.primary,
         borderRadius: 12,
@@ -1052,108 +1658,61 @@ const screenStyles = StyleSheet.create({
         flexDirection: "row",
         justifyContent: "center",
         alignItems: "center",
-        marginTop: 24,
-        shadowColor: colors.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
-        elevation: 4,
+        marginTop: 10,
     },
-    primaryBtnDisabled: { opacity: 0.5, shadowOpacity: 0 },
+    primaryBtnDisabled: {
+        opacity: 0.45,
+    },
     primaryBtnText: {
         color: "#fff",
-        fontSize: 16,
-        fontWeight: "700",
-        letterSpacing: 0.3,
+        fontSize: 15,
+        fontWeight: "800",
     },
     disclaimer: {
-        fontSize: 11,
-        color: colors.placeholder,
         textAlign: "center",
         marginTop: 12,
+        fontSize: 11,
+        color: colors.placeholder,
         lineHeight: 16,
-        paddingHorizontal: 8,
-        marginBottom: 4,
+        paddingHorizontal: 10,
     },
 });
-const otherSectionStyles = StyleSheet.create({
-    sectionLabel: {
-        fontSize: 13,
-        fontWeight: "700",
-        color: colors.primary,
-        textTransform: "uppercase",
-        letterSpacing: 0.5,
-        marginBottom: 12,
-        marginTop: 8,
-    },
-    inputRow: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 10,
+
+const accountInputStyles = StyleSheet.create({
+    wrapper: {
         marginBottom: 14,
     },
-    labelInput: {
-        flex: 1,
-        backgroundColor: colors.formBg,
-        borderWidth: 1.5,
-        borderColor: colors.formBorder,
-        borderRadius: 10,
-        paddingHorizontal: 14,
-        paddingVertical: 12,
-        fontSize: 14,
-        color: colors.secondary,
-    },
-    addBtn: {
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 6,
-        backgroundColor: "#EFF6FF",
-        borderWidth: 1.5,
-        borderColor: colors.primary,
-        borderRadius: 10,
-        paddingHorizontal: 14,
-        paddingVertical: 12,
-    },
-    addBtnText: {
-        fontSize: 13,
-        fontWeight: "700",
-        color: colors.primary,
-    },
-    docRow: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 10,
-        backgroundColor: "#F0FDF4",
-        borderRadius: 12,
-        borderWidth: 1.5,
-        borderColor: "#86EFAC",
-        padding: 12,
-        marginBottom: 10,
-    },
-    thumb: { width: 44, height: 44, borderRadius: 8 },
-    pdfPreview: {
-        width: 44,
-        height: 44,
-        borderRadius: 8,
-        backgroundColor: "#EFF6FF",
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    docInfo: { flex: 1 },
-    docLabel: { fontSize: 13, fontWeight: "700", color: colors.secondary },
-    docName: { fontSize: 11, color: colors.placeholder, marginTop: 2 },
-    removeBtn: { padding: 4 },
-    emptyHint: {
+    label: {
         fontSize: 12,
+        fontWeight: "700",
         color: colors.placeholder,
-        textAlign: "center",
-        paddingVertical: 16,
-        borderWidth: 1.5,
-        borderStyle: "dashed",
+        marginBottom: 6,
+        marginLeft: 4,
+    },
+    inputBox: {
+        minHeight: 54,
+        borderWidth: 1,
         borderColor: colors.formBorder,
-        borderRadius: 10,
-        marginBottom: 8,
+        borderRadius: 12,
+        backgroundColor: colors.formBg,
+        paddingHorizontal: 14,
+        flexDirection: "row",
+        alignItems: "center",
+    },
+    input: {
+        flex: 1,
+        fontSize: 15,
+        fontWeight: "600",
+        color: colors.secondary,
+        paddingVertical: Platform.OS === "ios" ? 14 : 10,
+        paddingRight: 12,
+    },
+    eyeBtn: {
+        width: 36,
+        height: 36,
+        alignItems: "center",
+        justifyContent: "center",
     },
 });
+
 export default VendorKycScreen;

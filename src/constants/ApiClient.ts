@@ -2,98 +2,156 @@ import axios from "axios";
 import { API_BASE_URL, GOOGLE_BASE_URL } from "./Environment";
 import { showError } from "../components/utils/Toaster";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { navigate } from "../components/utils/NavigationService";
 
-export const postRequest = async (endpoint: string, data: any, authRequired = true) => {
-    try {
-        let headers: Record<string, string> = {
-            "Content-Type": "application/json",
-        };
+let isRedirectingToLogin = false;
 
-        if (authRequired) {
-            const token = await AsyncStorage.getItem("userToken");
-            if (token) {
-                headers["Authorization"] = `Bearer ${token}`;
-            }
+const redirectToLoginIfUnauthorized = async (error: any) => {
+    const status = error?.response?.status;
+
+    if (status === 401 || status === 403) {
+        try {
+            await AsyncStorage.removeItem("userToken");
+        } catch (storageError) {
+            console.log("Token remove error:", storageError);
         }
 
-        console.log(data)
+        if (!isRedirectingToLogin) {
+            isRedirectingToLogin = true;
 
-        const response = await axios.post(`${API_BASE_URL}${endpoint}`, data, { headers });
+            showError("Session expired. Please login again.");
+
+            navigate("Login" as never);
+
+            setTimeout(() => {
+                isRedirectingToLogin = false;
+            }, 2000);
+        }
+
+        return true;
+    }
+
+    return false;
+};
+
+const getErrorMessage = (error: any, fallbackMessage = "Something went wrong") => {
+    return (
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message ||
+        fallbackMessage
+    );
+};
+
+const showApiError = (error: any, fallbackMessage = "Something went wrong") => {
+    const message = getErrorMessage(error, fallbackMessage);
+    showError(message);
+};
+
+const getAuthHeaders = async (authRequired = true) => {
+    const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+    };
+
+    if (authRequired) {
+        const token = await AsyncStorage.getItem("userToken");
+
+        if (token) {
+            headers.Authorization = `Bearer ${token}`;
+        }
+    }
+
+    return headers;
+};
+
+export const postRequest = async (
+    endpoint: string,
+    data: any,
+    authRequired = true
+) => {
+    try {
+        const headers = await getAuthHeaders(authRequired);
+
+        const response = await axios.post(`${API_BASE_URL}${endpoint}`, data, {
+            headers,
+        });
 
         return response.data;
     } catch (error: any) {
-        console.error("API Error:", error?.response?.data || error);
+        console.error("API POST Error:", error?.response?.data || error);
 
-        showError(error?.response?.data || error);
+        const isUnauthorized = await redirectToLoginIfUnauthorized(error);
+
+        if (!isUnauthorized) {
+            showApiError(error);
+        }
 
         return {
             success: false,
-            message: error?.response?.data?.message || error?.message || 'Something went wrong',
+            unauthorized: isUnauthorized,
+            message: getErrorMessage(error),
         };
     }
 };
 
-export const putRequest = async (endpoint: string, data: any, authRequired = true) => {
+export const putRequest = async (
+    endpoint: string,
+    data: any,
+    authRequired = true
+) => {
     try {
-        let headers: Record<string, string> = {
-            "Content-Type": "application/json",
-        };
-        console.log("comes inside put request")
-        console.log(endpoint, data)
+        const headers = await getAuthHeaders(authRequired);
 
-        if (authRequired) {
-            const token = await AsyncStorage.getItem("userToken");
-            if (token) {
-                headers["Authorization"] = `Bearer ${token}`;
-            }
-        }
-
-        console.log(data)
-
-        const response = await axios.put(`${API_BASE_URL}${endpoint}`, data, { headers });
+        const response = await axios.put(`${API_BASE_URL}${endpoint}`, data, {
+            headers,
+        });
 
         return response.data;
     } catch (error: any) {
-        console.error("API Error:", error?.response?.data || error);
+        console.error("API PUT Error:", error?.response?.data || error);
 
-        showError(error?.response?.data || error);
+        const isUnauthorized = await redirectToLoginIfUnauthorized(error);
+
+        if (!isUnauthorized) {
+            showApiError(error);
+        }
 
         return {
             success: false,
-            message: error?.response?.data?.message || error?.message || 'Something went wrong',
+            unauthorized: isUnauthorized,
+            message: getErrorMessage(error),
         };
     }
 };
 
 export const getRequest = async (
     endpoint: string,
-    params?: Record<string, any>,   // ← query params
+    params?: Record<string, any>,
     authRequired = true,
     isShowError = true
 ) => {
     try {
-        let headers: Record<string, string> = {
-            "Content-Type": "application/json",
-        };
-
-        if (authRequired) {
-            const token = await AsyncStorage.getItem("userToken");
-            if (token) headers["Authorization"] = `Bearer ${token}`;
-        }
+        const headers = await getAuthHeaders(authRequired);
 
         const response = await axios.get(`${API_BASE_URL}${endpoint}`, {
             headers,
-            params, // ← passed directly to axios
+            params,
         });
+
         return response.data;
     } catch (error: any) {
-        if (isShowError) {
-            console.error("API GET Error:", error?.response?.data || error);
-            showError(error?.response?.data || error);
+        console.error("API GET Error:", error?.response?.data || error);
+
+        const isUnauthorized = await redirectToLoginIfUnauthorized(error);
+
+        if (!isUnauthorized && isShowError) {
+            showApiError(error);
         }
+
         return {
             success: false,
-            message: error?.response?.data?.message || error?.message || "Something went wrong",
+            unauthorized: isUnauthorized,
+            message: getErrorMessage(error),
         };
     }
 };
@@ -110,7 +168,10 @@ export const googleGetRequest = async (endpoint: string, params: any) => {
 
         return {
             success: false,
-            message: error?.response?.data?.error_message || error?.message,
+            message:
+                error?.response?.data?.error_message ||
+                error?.message ||
+                "Google API request failed",
         };
     }
 };
@@ -121,47 +182,38 @@ export const uploadRequest = async (
     authRequired = true
 ) => {
     try {
-
-        console.log("comes inside")
-        let headers: Record<string, string> = {
-
-        };
+        const headers: Record<string, string> = {};
 
         if (authRequired) {
             const token = await AsyncStorage.getItem("userToken");
+
             if (token) {
-                headers["Authorization"] = `Bearer ${token}`;
+                headers.Authorization = `Bearer ${token}`;
             }
         }
 
-        console.log("comes inside 2")
-        console.log(formData)
-
-
-        const response = await axios.post(
-            `${API_BASE_URL}${endpoint}`,
-            formData,
-            {
-                headers: {
-                    ...headers,
-                    "Content-Type": "multipart/form-data",
-                },
-                transformRequest: (data) => data,
-            }
-        );
+        const response = await axios.post(`${API_BASE_URL}${endpoint}`, formData, {
+            headers: {
+                ...headers,
+                "Content-Type": "multipart/form-data",
+            },
+            transformRequest: data => data,
+        });
 
         return response.data;
     } catch (error: any) {
         console.error("UPLOAD API Error:", error?.response?.data || error);
 
-        showError(error?.response?.data || error);
+        const isUnauthorized = await redirectToLoginIfUnauthorized(error);
+
+        if (!isUnauthorized) {
+            showApiError(error, "Upload failed");
+        }
 
         return {
             success: false,
-            message:
-                error?.response?.data?.message ||
-                error?.message ||
-                "Upload failed",
+            unauthorized: isUnauthorized,
+            message: getErrorMessage(error, "Upload failed"),
         };
     }
 };

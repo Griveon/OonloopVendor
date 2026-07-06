@@ -37,8 +37,7 @@ const TABS: Tab[] = [
         label: "Orders",
         icon: "receipt-outline",
         iconActive: "receipt",
-        disabled: true,
-        screen: "VendorCouponListing", // swap when Orders screen is ready
+        screen: "Orders", // swap when Orders screen is ready
     },
     {
         key: "Products",

@@ -169,8 +169,8 @@ const AppDrawer = ({ navigation, closeDrawer }: any) => {
                 const res: any = await getRequest(
                     `${API_ENDPOINTS.VENDORPROFILEGET}/${user.user._id}`,
                     undefined,
-                undefined,
-                false
+                    undefined,
+                    false
                 );
 
                 if (res?.success) {
@@ -237,18 +237,32 @@ const AppDrawer = ({ navigation, closeDrawer }: any) => {
                 { icon: "bag-outline", label: "Products", onPress: () => go("ProductListing") },
             ],
         },
+
         {
             kind: "section",
             icon: "receipt-outline",
             label: "Orders",
             key: "orders",
-            disabled: true,
+            disabled: false,
             children: [
-                { icon: "time-outline", label: "Placed", onPress: () => go("Orders", { status: "PLACED" }) },
-                { icon: "checkmark-circle-outline", label: "Confirmed", onPress: () => go("Orders", { status: "CONFIRMED" }) },
-                { icon: "bicycle-outline", label: "Shipped", onPress: () => go("Orders", { status: "SHIPPED" }) },
-                { icon: "bag-check-outline", label: "Delivered", onPress: () => go("Orders", { status: "DELIVERED" }) },
-                { icon: "close-circle-outline", label: "Cancelled", onPress: () => go("Orders", { status: "CANCELLED" }) },
+                { icon: "time-outline", label: "Placed", onPress: () => go("Orders", { status: "placed" }) },
+                { icon: "checkmark-circle-outline", label: "Confirmed", onPress: () => go("Orders", { status: "confirmed" }) },
+                { icon: "bicycle-outline", label: "Shipped", onPress: () => go("Orders", { status: "shipped" }) },
+                { icon: "bag-check-outline", label: "Delivered", onPress: () => go("Orders", { status: "delivered" }) },
+                { icon: "close-circle-outline", label: "Cancelled", onPress: () => go("Orders", { status: "cancelled" }) },
+            ],
+        },
+        {
+            kind: "section",
+            icon: "wallet-outline",
+            label: "Accounts",
+            key: "accounts",
+            children: [
+                {
+                    icon: "document-text-outline",
+                    label: "Account Statement",
+                    onPress: () => go("Accounts"),
+                },
             ],
         },
         { kind: "divider", label: "ACCOUNT" },
