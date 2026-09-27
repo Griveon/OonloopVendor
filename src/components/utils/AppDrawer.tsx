@@ -349,12 +349,20 @@ const AppDrawer = ({ navigation, closeDrawer }: any) => {
                     </TouchableOpacity>
 
                     {/* Avatar + info */}
+                    {/* Avatar + info */}
                     <View style={styles.profileRow}>
                         <View style={styles.avatarRing}>
-                            {userInfo?.profileImage ? (
+                            {vendor?.storeLogo ? (
+                                <Image
+                                    source={{ uri: vendor.storeLogo }}
+                                    style={styles.avatar}
+                                    resizeMode="cover"
+                                />
+                            ) : userInfo?.profileImage ? (
                                 <Image
                                     source={{ uri: userInfo.profileImage }}
                                     style={styles.avatar}
+                                    resizeMode="cover"
                                 />
                             ) : (
                                 <View style={styles.avatarPlaceholder}>

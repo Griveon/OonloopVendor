@@ -15,6 +15,7 @@ import {
     Pressable,
     Animated,
     Switch,
+    Image,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "react-native-vector-icons/Ionicons";
@@ -22,11 +23,13 @@ import Toast from "react-native-toast-message";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { colors } from "../../constants/AppThem";
 import { API_ENDPOINTS } from "../../constants/ApiEndpoints";
-import { getRequest, putRequest } from "../../constants/ApiClient";
+import { deleteRequest, getRequest, postRequest, putRequest, uploadPutRequest, uploadRequest } from "../../constants/ApiClient";
 import AppBar from "../../components/utils/AppBar";
-import { getUserData } from "../../components/AsyncStorage/AsyncStorage";
+import { getLocalPreferences, getUserData, setSingleLocalPreference, storeLocalPreferences } from "../../components/AsyncStorage/AsyncStorage";
 import GenderPicker from "../../components/DropDowns/GenderDropDown";
 import GoogleAddressPicker, { AddressResult } from "../../components/LocationPicker/LocationPicker";
+import { launchImageLibrary, launchCamera, ImagePickerResponse, Asset } from "react-native-image-picker";
+import { USER_PREFERENCES } from "../../constants/userpreferences";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,6 +46,15 @@ type UserProfile = {
     role: string;
     createdAt: string;
     lastLogin?: string;
+    profileImage?: string;
+    storeLogo?: string;
+};
+
+type StoreImage = {
+    _id: string;
+    url: string;
+    isPrimary?: boolean;
+    caption?: string;
 };
 
 type VendorProfile = {
@@ -52,7 +64,7 @@ type VendorProfile = {
     storeName: string;
     storeSlug?: string;
     storeLogo?: string;
-    storeImages: any[];
+    storeImages: StoreImage[];
     storeLocationAddress: {
         addressLine1: string;
         addressLine2?: string;
@@ -537,6 +549,576 @@ const StatCell = ({
         <Text style={s.statLabel}>{label}</Text>
     </View>
 );
+
+// ─── Profile Image Upload Helper ─────────────────────────────────────────────
+
+const uploadProfileImage = async (asset: Asset) => {
+    const formData = new FormData();
+    formData.append("profileImage", {
+        uri: Platform.OS === "android" ? asset.uri : (asset.uri || "").replace("file://", ""),
+        name: asset.fileName || `profile_${Date.now()}.jpg`,
+        type: asset.type || "image/jpeg",
+    } as any);
+
+    // PUT /vendor/profile-image  (multipart, field name "profileImage")
+    const res: any = await uploadPutRequest(API_ENDPOINTS.PROFILEIMAGEUPDATE, formData);
+    if (!res?.success) {
+        throw new Error(res?.message || "Failed to upload profile image.");
+    }
+    return res;
+};
+
+// ─── Store Images API Helpers ─────────────────────────────────────────────────
+// NOTE: These assume the following additions:
+//  1) constants/ApiEndpoints.ts → STOREIMAGESUPLOAD, STOREIMAGESUPDATE, STOREIMAGESDELETE, STOREIMAGESGET
+//     mapped to the routes for POST/PUT/DELETE/GET "/vendor/store-images".
+//  2) constants/ApiClient.ts → `uploadRequest` (multipart POST) and `deleteRequest` (JSON DELETE)
+//     mirroring the existing `uploadPutRequest` / `putRequest`.
+//
+// IMPORTANT: The backend's updateStoreImages controller reads `req.body.storeImages`
+// (NOT `req.body.images`), so the PUT payload key below MUST be "storeImages".
+
+const uploadStoreImagesApi = async (assets: Asset[]) => {
+    const formData = new FormData();
+    assets.forEach((asset, idx) => {
+        formData.append("images", {
+            uri: Platform.OS === "android" ? asset.uri : (asset.uri || "").replace("file://", ""),
+            name: asset.fileName || `store_${Date.now()}_${idx}.jpg`,
+            type: asset.type || "image/jpeg",
+        } as any);
+    });
+
+    // POST /vendor/store-images (multipart, field name "images", up to 10 files — matches upload.array("images", 10))
+    const res: any = await uploadRequest(API_ENDPOINTS.STOREIMAGESUPLOAD, formData);
+    if (!res?.success) {
+        throw new Error(res?.message || "Failed to upload store images.");
+    }
+    return res;
+};
+
+const updateStoreImagesApi = async (images: StoreImage[]) => {
+    // PUT /vendor/store-images — persists new order / primary(cover) flag.
+    // Backend controller: this.vendorService.updateStoreImages(userId, req.body.storeImages)
+    // => the payload key MUST be "storeImages", not "images".
+    const res: any = await putRequest(API_ENDPOINTS.STOREIMAGESUPDATE, { storeImages: images });
+    if (!res?.success) {
+        throw new Error(res?.message || "Failed to update store images.");
+    }
+    return res;
+};
+
+const deleteStoreImageApi = async (imageUrl: string) => {
+    const res: any = await deleteRequest(
+        API_ENDPOINTS.STOREIMAGESDELETE,
+        { imageUrl }
+    );
+
+    if (!res?.success) {
+        throw new Error(res?.message || "Failed to delete store image.");
+    }
+
+    return res;
+};
+
+const fetchStoreImagesApi = async () => {
+    // GET /vendor/store-images
+    const res: any = await getRequest(API_ENDPOINTS.STOREIMAGESGET, undefined, undefined, false);
+    return res;
+};
+
+// ─── User Preferences Component ───────────────────────────────────────────────
+
+// ─── User Preferences Component ───────────────────────────────────────────────
+
+const UserPreferencesCard = () => {
+    const prefKey = USER_PREFERENCES.VENDOR_ORDER_NOTIFICATIONS.key;
+    const defaultVal = USER_PREFERENCES.VENDOR_ORDER_NOTIFICATIONS.default;
+
+    const [orderNotifications, setOrderNotifications] = useState<boolean>(defaultVal);
+    const [loading, setLoading] = useState<boolean>(true);
+    const [updating, setUpdating] = useState<boolean>(false);
+
+    useEffect(() => {
+        loadPreferences();
+    }, []);
+
+    const loadPreferences = async () => {
+        setLoading(true);
+
+        let valueFound = false;
+
+        // 1. Check local storage first
+        const localPrefs = await getLocalPreferences();
+        if (localPrefs && prefKey in localPrefs) {
+            setOrderNotifications(Boolean(localPrefs[prefKey]));
+            valueFound = true;
+            setLoading(false);
+        }
+
+        // 2. Fetch from API to check remote state and keep local storage in sync
+        try {
+            const res: any = await getRequest(
+                API_ENDPOINTS.USERPREFERENCE_GET,
+                undefined,
+                undefined,
+                false
+            );
+
+            if (res?.success && res?.data?.values) {
+                const apiValues = res.data.values;
+
+                // Update local storage cache
+                await storeLocalPreferences(apiValues);
+
+                // If key exists in API response, set state (respects existing false/true)
+                if (prefKey in apiValues) {
+                    setOrderNotifications(Boolean(apiValues[prefKey]));
+                    valueFound = true;
+                }
+            }
+        } catch (err: any) {
+            console.warn("Background preference sync failed:", err?.message);
+        } finally {
+            setLoading(false);
+        }
+
+        // 3. IF KEY NEVER EXISTED (first time setup), initialize default value both locally and remotely
+        if (!valueFound) {
+            await initializeDefaultPreference();
+        }
+    };
+
+    const initializeDefaultPreference = async () => {
+        try {
+            // Save default value locally
+            await setSingleLocalPreference(prefKey, defaultVal);
+            setOrderNotifications(defaultVal);
+
+            // Sync default value with backend API
+            await postRequest(API_ENDPOINTS.USERPREFERENCE_SET, {
+                key: prefKey,
+                value: defaultVal,
+            });
+        } catch (err: any) {
+            console.warn("Failed to set default preference on server:", err?.message);
+        }
+    };
+
+    const handleToggleOrderNotifications = async (newValue: boolean) => {
+        const previousValue = orderNotifications;
+
+        // Optimistic UI update + Instant local storage persist
+        setOrderNotifications(newValue);
+        await setSingleLocalPreference(prefKey, newValue);
+
+        setUpdating(true);
+
+        try {
+            const res: any = await postRequest(API_ENDPOINTS.USERPREFERENCE_SET, {
+                key: prefKey,
+                value: newValue,
+            });
+
+            if (res?.success) {
+                Toast.show({
+                    type: "success",
+                    text1: "Preference Saved",
+                    text2: `Order notifications ${newValue ? "enabled" : "disabled"}.`,
+                });
+            } else {
+                // Rollback local storage & UI state on failure
+                setOrderNotifications(previousValue);
+                await setSingleLocalPreference(prefKey, previousValue);
+
+                Toast.show({
+                    type: "error",
+                    text1: "Error",
+                    text2: res?.message || "Failed to update preference.",
+                });
+            }
+        } catch (err: any) {
+            // Rollback local storage & UI state on failure
+            setOrderNotifications(previousValue);
+            await setSingleLocalPreference(prefKey, previousValue);
+
+            Toast.show({
+                type: "error",
+                text1: "Error",
+                text2: err?.message || "Failed to update preference.",
+            });
+        } finally {
+            setUpdating(false);
+        }
+    };
+
+    return (
+        <Section title="User Preferences" icon="settings-outline">
+            <View style={prefStyles.row}>
+                <View style={prefStyles.textWrap}>
+                    <Text style={prefStyles.title}>Order Notifications</Text>
+                    <Text style={prefStyles.subtitle}>
+                        Do you want notifications related to orders?
+                    </Text>
+                </View>
+
+                {loading || updating ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                    <Switch
+                        value={orderNotifications}
+                        onValueChange={handleToggleOrderNotifications}
+                        trackColor={{
+                            false: colors.formBorder,
+                            true: colors.primary + "50",
+                        }}
+                        thumbColor={orderNotifications ? colors.primary : "#9CA3AF"}
+                        ios_backgroundColor={colors.formBorder}
+                    />
+                )}
+            </View>
+        </Section>
+    );
+};
+
+const prefStyles = StyleSheet.create({
+    row: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingVertical: 12,
+        gap: 12,
+    },
+    textWrap: {
+        flex: 1,
+    },
+    title: {
+        fontSize: 14,
+        fontWeight: "600",
+        color: colors.secondary,
+        marginBottom: 2,
+    },
+    subtitle: {
+        fontSize: 12,
+        color: colors.placeholder,
+        lineHeight: 16,
+    },
+});
+
+// ─── Editable Avatar (Profile Image Upload) ───────────────────────────────────
+
+const EditableAvatar = ({
+    imageUrl,
+    initials,
+    onUploaded,
+}: {
+    imageUrl?: string;
+    initials: string;
+    onUploaded: (url: string) => void;
+}) => {
+    const [uploading, setUploading] = useState(false);
+    const [pickerVisible, setPickerVisible] = useState(false);
+
+    const handlePicked = async (response: ImagePickerResponse) => {
+        setPickerVisible(false);
+        if (response.didCancel || response.errorCode) {
+            if (response.errorMessage) {
+                Toast.show({ type: "error", text1: "Error", text2: response.errorMessage });
+            }
+            return;
+        }
+        const asset = response.assets?.[0];
+        if (!asset?.uri) return;
+
+        setUploading(true);
+        try {
+            const res: any = await uploadProfileImage(asset);
+            const newUrl =
+                res?.data?.profileImage ||
+                res?.data?.user?.profileImage ||
+                res?.profileImage ||
+                asset.uri;
+            onUploaded(newUrl);
+            Toast.show({ type: "success", text1: "Saved", text2: "Profile photo updated successfully." });
+        } catch (err: any) {
+            Toast.show({ type: "error", text1: "Error", text2: err?.message || "Upload failed." });
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const pickFromLibrary = () =>
+        launchImageLibrary({ mediaType: "photo", quality: 0.8, maxWidth: 800, maxHeight: 800 }, handlePicked);
+
+    const pickFromCamera = () =>
+        launchCamera({ mediaType: "photo", quality: 0.8, maxWidth: 800, maxHeight: 800, saveToPhotos: false }, handlePicked);
+
+    return (
+        <>
+            <TouchableOpacity
+                style={eav.wrap}
+                activeOpacity={0.8}
+                onPress={() => setPickerVisible(true)}
+                disabled={uploading}
+            >
+                {imageUrl ? (
+                    <View style={eav.imageWrap}>
+                        <Image source={{ uri: imageUrl }} style={eav.image} />
+                    </View>
+                ) : (
+                    <View style={eav.initialsWrap}>
+                        <Text style={eav.initialsText}>{initials}</Text>
+                    </View>
+                )}
+
+                <View style={eav.badge}>
+                    {uploading ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                        <Ionicons name="camera" size={12} color="#fff" />
+                    )}
+                </View>
+            </TouchableOpacity>
+
+            <Modal transparent animationType="fade" visible={pickerVisible} onRequestClose={() => setPickerVisible(false)}>
+                <Pressable style={eav.sheetBackdrop} onPress={() => setPickerVisible(false)}>
+                    <Pressable style={eav.sheet} onPress={() => { }}>
+                        <View style={bs.handle} />
+                        <Text style={eav.sheetTitle}>Update Profile Photo</Text>
+
+                        <TouchableOpacity style={eav.sheetOption} onPress={pickFromCamera} activeOpacity={0.7}>
+                            <Ionicons name="camera-outline" size={18} color={colors.primary} />
+                            <Text style={eav.sheetOptionText}>Take Photo</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={eav.sheetOption} onPress={pickFromLibrary} activeOpacity={0.7}>
+                            <Ionicons name="images-outline" size={18} color={colors.primary} />
+                            <Text style={eav.sheetOptionText}>Choose from Library</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[eav.sheetOption, { justifyContent: "center", borderBottomWidth: 0 }]}
+                            onPress={() => setPickerVisible(false)}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={[eav.sheetOptionText, { color: colors.placeholder, fontWeight: "600" }]}>Cancel</Text>
+                        </TouchableOpacity>
+                    </Pressable>
+                </Pressable>
+            </Modal>
+        </>
+    );
+};
+
+// ─── Store Images Manager (Upload / Set Cover / Delete) ───────────────────────
+
+const StoreImagesSection = ({
+    images,
+    onChange,
+}: {
+    images: StoreImage[];
+    onChange: (updated: StoreImage[]) => void;
+}) => {
+    const [uploading, setUploading] = useState(false);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [settingPrimaryId, setSettingPrimaryId] = useState<string | null>(null);
+    const [pickerVisible, setPickerVisible] = useState(false);
+
+    const MAX_IMAGES = 10;
+
+    const handlePicked = async (response: ImagePickerResponse) => {
+        setPickerVisible(false);
+        if (response.didCancel || response.errorCode) {
+            if (response.errorMessage) {
+                Toast.show({ type: "error", text1: "Error", text2: response.errorMessage });
+            }
+            return;
+        }
+        const assets = response.assets;
+        if (!assets?.length) return;
+
+        if (images.length + assets.length > MAX_IMAGES) {
+            Toast.show({
+                type: "error",
+                text1: "Limit reached",
+                text2: `You can upload up to ${MAX_IMAGES} store images.`,
+            });
+            return;
+        }
+
+        setUploading(true);
+        try {
+            const res: any = await uploadStoreImagesApi(assets);
+            const newImages: StoreImage[] =
+                res?.data?.storeImages || res?.data?.images || res?.storeImages || [];
+
+            if (newImages.length) {
+                // Server returned the full/updated list — trust it if it looks complete,
+                // otherwise just append the freshly uploaded ones.
+                onChange(newImages.length >= images.length ? newImages : [...images, ...newImages]);
+            }
+            Toast.show({
+                type: "success",
+                text1: "Uploaded",
+                text2: `${assets.length} image${assets.length > 1 ? "s" : ""} added.`,
+            });
+        } catch (err: any) {
+            Toast.show({ type: "error", text1: "Error", text2: err?.message || "Upload failed." });
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const pickFromLibrary = () =>
+        launchImageLibrary(
+            {
+                mediaType: "photo",
+                quality: 0.8,
+                maxWidth: 1200,
+                maxHeight: 1200,
+                selectionLimit: Math.max(1, MAX_IMAGES - images.length),
+            },
+            handlePicked
+        );
+
+    const pickFromCamera = () =>
+        launchCamera({ mediaType: "photo", quality: 0.8, maxWidth: 1200, maxHeight: 1200, saveToPhotos: false }, handlePicked);
+
+    const handleDelete = (imageId: string) => {
+        setDeletingId(imageId);
+        deleteStoreImageApi(imageId)
+            .then((res: any) => {
+                // Prefer the server's authoritative vendor.storeImages if present,
+                // otherwise fall back to filtering locally.
+                const updated: StoreImage[] =
+                    res?.data?.storeImages || images.filter((img) => img._id !== imageId);
+                onChange(updated);
+                Toast.show({ type: "success", text1: "Deleted", text2: "Store image removed." });
+            })
+            .catch((err: any) => {
+                Toast.show({ type: "error", text1: "Error", text2: err?.message || "Delete failed." });
+            })
+            .finally(() => setDeletingId(null));
+    };
+
+    const handleSetPrimary = async (imageId: string) => {
+        setSettingPrimaryId(imageId);
+        try {
+            const reordered = [
+                ...images.filter((img) => img._id === imageId).map((img) => ({ ...img, isPrimary: true })),
+                ...images.filter((img) => img._id !== imageId).map((img) => ({ ...img, isPrimary: false })),
+            ];
+            const res: any = await updateStoreImagesApi(reordered);
+            // Prefer the server's authoritative vendor.storeImages if present.
+            const updated: StoreImage[] = res?.data?.storeImages || reordered;
+            onChange(updated);
+            Toast.show({ type: "success", text1: "Updated", text2: "Cover image set." });
+        } catch (err: any) {
+            Toast.show({ type: "error", text1: "Error", text2: err?.message || "Update failed." });
+        } finally {
+            setSettingPrimaryId(null);
+        }
+    };
+
+    return (
+        <Section
+            title="Store Images"
+            icon="images-outline"
+            noPad
+            rightAction={<Text style={si.countText}>{images.length}/{MAX_IMAGES}</Text>}
+        >
+            <View style={si.grid}>
+                {images.map((img) => (
+                    <View key={img._id} style={si.tile}>
+                        <Image source={{ uri: img.url }} style={si.tileImage} />
+                        {img.isPrimary && (
+                            <View style={si.primaryBadge}>
+                                <Ionicons name="star" size={10} color="#fff" />
+                                <Text style={si.primaryBadgeText}>Cover</Text>
+                            </View>
+                        )}
+                        <View style={si.tileActions}>
+                            {!img.isPrimary && (
+                                <TouchableOpacity
+                                    style={si.tileActionBtn}
+                                    onPress={() => handleSetPrimary(img._id)}
+                                    disabled={settingPrimaryId === img._id}
+                                    activeOpacity={0.7}
+                                >
+                                    {settingPrimaryId === img._id ? (
+                                        <ActivityIndicator size="small" color="#fff" />
+                                    ) : (
+                                        <Ionicons name="star-outline" size={13} color="#fff" />
+                                    )}
+                                </TouchableOpacity>
+                            )}
+                            <TouchableOpacity
+                                style={[si.tileActionBtn, si.tileDeleteBtn]}
+                                onPress={() => handleDelete(img.url)}
+                                disabled={deletingId === img.url}
+                                activeOpacity={0.7}
+                            >
+                                {deletingId === img.url ? (
+                                    <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                    <Ionicons name="trash-outline" size={13} color="#fff" />
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                ))}
+
+                {images.length < MAX_IMAGES && (
+                    <TouchableOpacity
+                        style={si.addTile}
+                        onPress={() => setPickerVisible(true)}
+                        disabled={uploading}
+                        activeOpacity={0.75}
+                    >
+                        {uploading ? (
+                            <ActivityIndicator size="small" color={colors.primary} />
+                        ) : (
+                            <>
+                                <Ionicons name="add" size={22} color={colors.primary} />
+                                <Text style={si.addTileText}>Add</Text>
+                            </>
+                        )}
+                    </TouchableOpacity>
+                )}
+            </View>
+
+            {images.length === 0 && !uploading && (
+                <Text style={si.emptyText}>No store images yet. Add photos to showcase your store.</Text>
+            )}
+
+            <Modal transparent animationType="fade" visible={pickerVisible} onRequestClose={() => setPickerVisible(false)}>
+                <Pressable style={eav.sheetBackdrop} onPress={() => setPickerVisible(false)}>
+                    <Pressable style={eav.sheet} onPress={() => { }}>
+                        <View style={bs.handle} />
+                        <Text style={eav.sheetTitle}>Add Store Photos</Text>
+
+                        <TouchableOpacity style={eav.sheetOption} onPress={pickFromCamera} activeOpacity={0.7}>
+                            <Ionicons name="camera-outline" size={18} color={colors.primary} />
+                            <Text style={eav.sheetOptionText}>Take Photo</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={eav.sheetOption} onPress={pickFromLibrary} activeOpacity={0.7}>
+                            <Ionicons name="images-outline" size={18} color={colors.primary} />
+                            <Text style={eav.sheetOptionText}>Choose from Library</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[eav.sheetOption, { justifyContent: "center", borderBottomWidth: 0 }]}
+                            onPress={() => setPickerVisible(false)}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={[eav.sheetOptionText, { color: colors.placeholder, fontWeight: "600" }]}>Cancel</Text>
+                        </TouchableOpacity>
+                    </Pressable>
+                </Pressable>
+            </Modal>
+        </Section>
+    );
+};
 
 // ─── Edit Profile Bottom Sheet ────────────────────────────────────────────────
 
@@ -1333,7 +1915,17 @@ const HolidayCard = ({ vendor, onEditPress }: { vendor: VendorProfile; onEditPre
 
 // ─── Account Info Section ─────────────────────────────────────────────────────
 
-const AccountInfo = ({ user, onEditPress }: { user: UserProfile; onEditPress: () => void }) => {
+const AccountInfo = ({
+    user,
+    onEditPress,
+    onImageUploaded,
+    vendor
+}: {
+    user: UserProfile;
+    onEditPress: () => void;
+    onImageUploaded: (url: string) => void;
+    vendor: any
+}) => {
     const initials = `${user.firstName[0]}${user.lastName[0]}`.toUpperCase();
     return (
         <Section
@@ -1347,9 +1939,11 @@ const AccountInfo = ({ user, onEditPress }: { user: UserProfile; onEditPress: ()
             }
         >
             <View style={s.userCard}>
-                <View style={s.userAvatar}>
-                    <Text style={s.userAvatarText}>{initials}</Text>
-                </View>
+                <EditableAvatar
+                    imageUrl={vendor.storeLogo}
+                    initials={initials}
+                    onUploaded={onImageUploaded}
+                />
                 <View style={{ flex: 1 }}>
                     <Text style={s.userName}>{user.firstName} {user.lastName}</Text>
                     <Text style={s.userRole}>{capitalize(user.role)}</Text>
@@ -1500,7 +2094,14 @@ const VendorProfileScreen = ({ navigation, route }: any) => {
                 <StoreHero vendor={vendor} user={userInfo} />
                 <KycStrip vendor={vendor} />
 
-                <AccountInfo user={userInfo} onEditPress={() => setEditSheetVisible(true)} />
+                <AccountInfo
+                    user={userInfo}
+                    vendor={vendor}
+                    onEditPress={() => setEditSheetVisible(true)}
+                    onImageUploaded={(url) =>
+                        setUserInfo((prev: any) => (prev ? { ...prev, profileImage: url } : prev))
+                    }
+                />
 
                 <Section title="Business Information" icon="business-outline">
                     <Row label="Business Type" value={fmt(vendor.businessType)} />
@@ -1533,6 +2134,14 @@ const VendorProfileScreen = ({ navigation, route }: any) => {
                         </TouchableOpacity>
                     )}
                 </Section>
+
+                {/* ── Store Images — upload / set cover / delete ── */}
+                <StoreImagesSection
+                    images={vendor.storeImages || []}
+                    onChange={(updated) =>
+                        setVendor((prev) => (prev ? { ...prev, storeImages: updated } : prev))
+                    }
+                />
 
                 {/* ── Working Schedule — with Edit button ── */}
                 <Section
@@ -1579,6 +2188,8 @@ const VendorProfileScreen = ({ navigation, route }: any) => {
                         <KycDocs docs={vendor.kycDocuments} />
                     </Section>
                 )}
+                <UserPreferencesCard />
+
             </ScrollView>
 
             {/* ── Edit Account Info Sheet ── */}
@@ -1630,6 +2241,7 @@ const VendorProfileScreen = ({ navigation, route }: any) => {
                     }
                 />
             )}
+
         </SafeAreaView>
     );
 };
@@ -1801,6 +2413,55 @@ const ese = StyleSheet.create({
         marginTop: 4,
     },
     selectedDaysText: { fontSize: 12, color: colors.primary, fontWeight: "600" },
+});
+
+// ─── Editable Avatar StyleSheet ───────────────────────────────────────────────
+
+const eav = StyleSheet.create({
+    wrap: { width: 40, height: 40 },
+    imageWrap: { width: 40, height: 40, borderRadius: 20, overflow: "hidden" },
+    image: { width: 40, height: 40, borderRadius: 20 },
+    initialsWrap: {
+        width: 40, height: 40, borderRadius: 20,
+        backgroundColor: colors.primary + "18", justifyContent: "center", alignItems: "center",
+    },
+    initialsText: { fontSize: 14, fontWeight: "700", color: colors.primary },
+    badge: {
+        position: "absolute", bottom: -2, right: -2,
+        width: 18, height: 18, borderRadius: 9,
+        backgroundColor: colors.primary,
+        justifyContent: "center", alignItems: "center",
+        borderWidth: 2, borderColor: "#fff",
+    },
+    sheetBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
+    sheet: { backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingBottom: 28 },
+    sheetTitle: { fontSize: 14, fontWeight: "700", color: colors.secondary, textAlign: "center", marginBottom: 12 },
+    sheetOption: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.formBorder },
+    sheetOptionText: { fontSize: 14, color: colors.secondary, fontWeight: "500" },
+});
+
+// ─── Store Images StyleSheet ──────────────────────────────────────────────────
+
+const si = StyleSheet.create({
+    countText: { fontSize: 11, fontWeight: "700", color: colors.placeholder },
+    grid: { flexDirection: "row", flexWrap: "wrap", gap: 8, padding: 14 },
+    tile: { width: "31%", aspectRatio: 1, borderRadius: 10, overflow: "hidden", backgroundColor: colors.formBg, position: "relative" },
+    tileImage: { width: "100%", height: "100%" },
+    primaryBadge: {
+        position: "absolute", top: 5, left: 5, flexDirection: "row", alignItems: "center", gap: 3,
+        backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3,
+    },
+    primaryBadgeText: { fontSize: 9, fontWeight: "700", color: "#fff" },
+    tileActions: { position: "absolute", bottom: 5, right: 5, flexDirection: "row", gap: 5 },
+    tileActionBtn: { width: 22, height: 22, borderRadius: 11, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "center", alignItems: "center" },
+    tileDeleteBtn: { backgroundColor: "rgba(220,38,38,0.75)" },
+    addTile: {
+        width: "31%", aspectRatio: 1, borderRadius: 10, borderWidth: 1.5,
+        borderColor: colors.primary + "40", borderStyle: "dashed",
+        backgroundColor: colors.primary + "08", justifyContent: "center", alignItems: "center", gap: 2,
+    },
+    addTileText: { fontSize: 11, fontWeight: "600", color: colors.primary },
+    emptyText: { fontSize: 12, color: colors.placeholder, paddingHorizontal: 14, paddingBottom: 14, textAlign: "center" },
 });
 
 // ─── Bottom Sheet StyleSheet ──────────────────────────────────────────────────

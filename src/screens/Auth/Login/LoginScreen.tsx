@@ -179,7 +179,7 @@ const LoginScreen = ({ navigation }: any) => {
                 }
             } else {
                 setLoading(false);
-                ToastAndroid.show(res?.message ?? "Login failed.", ToastAndroid.LONG);
+                // ToastAndroid.show(res?.message ?? "Login failed.", ToastAndroid.LONG);
             }
         } catch (error) {
             setLoading(false);

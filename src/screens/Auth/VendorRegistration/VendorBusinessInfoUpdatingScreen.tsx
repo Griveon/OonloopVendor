@@ -50,7 +50,7 @@ type StoreAddress = {
 type FormState = {
     storeName: string;
     businessType: string;
-    gstNumber: string;
+    gstNumber?: string;
     panNumber: string;
     workingHours: WorkingHours;
     workingDays: string[];

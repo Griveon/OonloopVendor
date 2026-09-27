@@ -226,7 +226,6 @@ const localStyles = StyleSheet.create({
         lineHeight: 18,
         fontWeight: "500",
     },
-    // ── isActive toggle row
     toggleRow: {
         flexDirection: "row",
         alignItems: "center",
@@ -267,6 +266,7 @@ const AddCouponScreen = ({ navigation }: any) => {
     const [selectedType, setSelectedType] = useState<string>("");
     const [vendor, setVendor] = useState<any | null>(null);
     const [loading, setLoading] = useState(false);
+
     const [form, setForm] = useState<FormState>({
         discountType: "PERCENTAGE",
         discountValue: "",
@@ -292,6 +292,7 @@ const AddCouponScreen = ({ navigation }: any) => {
                 undefined,
                 false
             );
+
             if (res?.success && res?.data) {
                 setVendor(res.data.vendor);
             }
@@ -299,15 +300,18 @@ const AddCouponScreen = ({ navigation }: any) => {
     };
 
     const handleChange = (field: keyof FormState, value: string | boolean) => {
-        setForm((prev) => ({ ...prev, [field]: value }));
+        setForm((prev) => ({
+            ...prev,
+            [field]: value,
+        }));
     };
 
     const handleCouponCodeChange = (value: string) => {
         handleChange("couponCode", value.toUpperCase().replace(/\s/g, ""));
     };
 
-    const generateCouponCode = (type: string, discountValue: string) => {
-        const selected = COUPON_TYPES.find((t) => t.value === type);
+    const generateCouponCode = (couponType: string, discountValue: string) => {
+        const selected = COUPON_TYPES.find((t) => t.value === couponType);
         if (!selected) return "";
 
         const valuePart = discountValue ? discountValue.replace(/\D/g, "") : "";
@@ -315,15 +319,25 @@ const AddCouponScreen = ({ navigation }: any) => {
         return `${selected.code}${valuePart}`.toUpperCase();
     };
 
-    const handleCouponTypeChange = (type: string) => {
-        setSelectedType(type);
+    const handleDiscountTypeChange = (discountType: string) => {
+        setForm((prev) => ({
+            ...prev,
+            discountType,
+        }));
+    };
+
+    const handleCouponTypeChange = (couponType: string) => {
+        setSelectedType(couponType);
 
         setForm((prev) => {
-            const code = generateCouponCode(type, prev.discountValue);
+            const code = generateCouponCode(couponType, prev.discountValue);
 
             return {
                 ...prev,
-                discountType: type,
+
+                // ✅ IMPORTANT:
+                // Do not update discountType here.
+                // discountType should always remain only PERCENTAGE or FIXED.
                 couponCode: code,
             };
         });
@@ -331,7 +345,7 @@ const AddCouponScreen = ({ navigation }: any) => {
 
     const handleDiscountValueChange = (value: string) => {
         setForm((prev) => {
-            const code = generateCouponCode(prev.discountType, value);
+            const code = generateCouponCode(selectedType, value);
 
             return {
                 ...prev,
@@ -343,60 +357,122 @@ const AddCouponScreen = ({ navigation }: any) => {
 
     const validateForm = (): boolean => {
         if (!form.discountType.trim()) {
-            Toast.show({ type: "error", text1: "Validation Error", text2: "Discount type is required" });
+            Toast.show({
+                type: "error",
+                text1: "Validation Error",
+                text2: "Discount type is required",
+            });
             return false;
         }
-        if (!form.discountValue.trim() || isNaN(Number(form.discountValue)) || Number(form.discountValue) <= 0) {
-            Toast.show({ type: "error", text1: "Validation Error", text2: "Enter a valid discount value" });
+
+        if (
+            !form.discountValue.trim() ||
+            isNaN(Number(form.discountValue)) ||
+            Number(form.discountValue) <= 0
+        ) {
+            Toast.show({
+                type: "error",
+                text1: "Validation Error",
+                text2: "Enter a valid discount value",
+            });
             return false;
         }
+
         if (form.discountType === "PERCENTAGE" && Number(form.discountValue) > 100) {
-            Toast.show({ type: "error", text1: "Validation Error", text2: "Percentage discount cannot exceed 100%" });
+            Toast.show({
+                type: "error",
+                text1: "Validation Error",
+                text2: "Percentage discount cannot exceed 100%",
+            });
             return false;
         }
-        if (!form.minOrderValue.trim() || isNaN(Number(form.minOrderValue)) || Number(form.minOrderValue) < 0) {
-            Toast.show({ type: "error", text1: "Validation Error", text2: "Enter a valid minimum order value" });
+
+        if (
+            !form.minOrderValue.trim() ||
+            isNaN(Number(form.minOrderValue)) ||
+            Number(form.minOrderValue) < 0
+        ) {
+            Toast.show({
+                type: "error",
+                text1: "Validation Error",
+                text2: "Enter a valid minimum order value",
+            });
             return false;
         }
+
+        if (!selectedType.trim()) {
+            Toast.show({
+                type: "error",
+                text1: "Validation Error",
+                text2: "Coupon type is required",
+            });
+            return false;
+        }
+
         if (!form.couponCode.trim()) {
-            Toast.show({ type: "error", text1: "Validation Error", text2: "Coupon code is required" });
+            Toast.show({
+                type: "error",
+                text1: "Validation Error",
+                text2: "Coupon code is required",
+            });
             return false;
         }
-        // if (!form.description.trim()) {
-        //     Toast.show({ type: "error", text1: "Validation Error", text2: "Description is required" });
-        //     return false;
-        // }
+
         return true;
     };
 
     const handleSubmit = async () => {
         if (!validateForm()) return;
+
         const { user } = await getUserData();
 
         const payload = {
             vendorId: user?.user?._id,
+
+            // ✅ Backend enum only allows PRODUCT
+            couponType: "PRODUCT",
+
+            // ✅ This must remain only PERCENTAGE or FIXED
             discountType: form.discountType,
+
             discountValue: Number(form.discountValue),
             minOrderValue: Number(form.minOrderValue),
+
+            // ✅ selectedType is used only for generating couponCode
+            // Do not send selectedType as couponType
             couponCode: form.couponCode.trim(),
+
             description: form.description.trim(),
             isActive: form.isActive,
         };
 
         setLoading(true);
+
         try {
             const res: any = await postRequest(API_ENDPOINTS.VENDORCOUPONCREATE, payload);
             setLoading(false);
 
             if (res?.success) {
-                Toast.show({ type: "success", text1: "Success", text2: "Coupon created successfully!" });
+                Toast.show({
+                    type: "success",
+                    text1: "Success",
+                    text2: "Coupon created successfully!",
+                });
                 navigation.goBack();
             } else {
-                Toast.show({ type: "error", text1: "Error", text2: res?.message || "Failed to create coupon" });
+                Toast.show({
+                    type: "error",
+                    text1: "Error",
+                    text2: res?.message || "Failed to create coupon",
+                });
             }
         } catch (err: any) {
             setLoading(false);
-            Toast.show({ type: "error", text1: "Error", text2: err?.message || "Something went wrong. Please try again." });
+            Toast.show({
+                type: "error",
+                text1: "Error",
+                text2: err?.message || "Something went wrong. Please try again.",
+            });
         }
     };
 
@@ -404,7 +480,8 @@ const AddCouponScreen = ({ navigation }: any) => {
         form.discountType &&
         form.discountValue &&
         form.minOrderValue &&
-        form.couponCode
+        selectedType &&
+        form.couponCode;
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.scaffoldBg }} edges={["bottom"]}>
@@ -425,13 +502,12 @@ const AddCouponScreen = ({ navigation }: any) => {
                     <PageHeader />
 
                     <View style={localStyles.card}>
-
                         {/* ── Discount Config ── */}
                         <Text style={localStyles.sectionLabel}>Discount Configuration</Text>
 
                         <DiscountTypeSelector
                             value={form.discountType}
-                            onChange={(val) => handleChange("discountType", val)}
+                            onChange={handleDiscountTypeChange}
                         />
 
                         <FloatingInput
@@ -474,7 +550,7 @@ const AddCouponScreen = ({ navigation }: any) => {
 
                         <DropdownPicker
                             label="Coupon Type"
-                            value={selectedType} // ✅ use local state
+                            value={selectedType}
                             placeholder="Select Coupon Type"
                             options={COUPON_TYPES.map((o) => ({
                                 _id: o.value,
@@ -495,23 +571,16 @@ const AddCouponScreen = ({ navigation }: any) => {
                             }
                         />
 
-
-
-                        {/* <FloatingInput
-                            label="Description *"
-                            placeholder="e.g. 20% off on all products for orders above ₹500"
-                            value={form.description}
-                            onChangeText={(t: string) => handleChange("description", t)}
-                            multiline
-                            numberOfLines={3}
-                            style={{ height: 80, textAlignVertical: "top" }}
-                        /> */}
-
                         {/* ── isActive Toggle ── */}
-                        <View style={[
-                            localStyles.toggleRow,
-                            form.isActive && { borderColor: colors.primary, backgroundColor: "#EFF6FF" },
-                        ]}>
+                        <View
+                            style={[
+                                localStyles.toggleRow,
+                                form.isActive && {
+                                    borderColor: colors.primary,
+                                    backgroundColor: "#EFF6FF",
+                                },
+                            ]}
+                        >
                             <View style={localStyles.toggleLeft}>
                                 <Ionicons
                                     name={form.isActive ? "checkmark-circle" : "close-circle-outline"}
@@ -521,14 +590,20 @@ const AddCouponScreen = ({ navigation }: any) => {
                                 <View style={localStyles.toggleTextWrapper}>
                                     <Text style={localStyles.toggleTitle}>Activate Coupon</Text>
                                     <Text style={localStyles.toggleSubtitle}>
-                                        {form.isActive ? "Coupon will be live immediately" : "Coupon will be saved as inactive"}
+                                        {form.isActive
+                                            ? "Coupon will be live immediately"
+                                            : "Coupon will be saved as inactive"}
                                     </Text>
                                 </View>
                             </View>
+
                             <Switch
                                 value={form.isActive}
                                 onValueChange={(val) => handleChange("isActive", val)}
-                                trackColor={{ false: colors.formBorder, true: colors.primary + "55" }}
+                                trackColor={{
+                                    false: colors.formBorder,
+                                    true: colors.primary + "55",
+                                }}
                                 thumbColor={form.isActive ? colors.primary : "#fff"}
                                 ios_backgroundColor={colors.formBorder}
                             />
@@ -580,7 +655,10 @@ const screenStyles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 4,
     },
-    primaryBtnDisabled: { opacity: 0.55, shadowOpacity: 0 },
+    primaryBtnDisabled: {
+        opacity: 0.55,
+        shadowOpacity: 0,
+    },
     primaryBtnText: {
         color: "#fff",
         fontSize: 16,
@@ -637,6 +715,7 @@ export const COUPON_TYPES = [
     { label: "Mega Sale", value: "MEGA", code: "MEGA" },
     { label: "Super Saver Deal", value: "SUPER_SAVER", code: "SAVE" },
 ];
+
 const DropdownPicker = ({
     label,
     value,
@@ -657,9 +736,9 @@ const DropdownPicker = ({
 
     const selected = options.find((o) => o._id === value);
 
-    // 🔍 Filtered options
     const filteredOptions = useMemo(() => {
         if (!search.trim()) return options;
+
         return options.filter((o) =>
             o.name.toLowerCase().includes(search.toLowerCase())
         );
@@ -669,7 +748,6 @@ const DropdownPicker = ({
         <View style={ddStyles.wrapper}>
             <Text style={ddStyles.label}>{label}</Text>
 
-            {/* Trigger */}
             <TouchableOpacity
                 style={ddStyles.trigger}
                 onPress={() => setOpen(true)}
@@ -697,7 +775,6 @@ const DropdownPicker = ({
                 )}
             </TouchableOpacity>
 
-            {/* Modal */}
             <Modal visible={open} transparent animationType="fade">
                 <TouchableOpacity
                     style={ddStyles.backdrop}
@@ -707,10 +784,9 @@ const DropdownPicker = ({
                     <View
                         style={[
                             ddStyles.sheet,
-                            { height: height * 0.75 }, // ✅ 75% height
+                            { height: height * 0.75 },
                         ]}
                     >
-                        {/* Header */}
                         <View style={ddStyles.sheetHeader}>
                             <Text style={ddStyles.sheetTitle}>{label}</Text>
                             <TouchableOpacity onPress={() => setOpen(false)}>
@@ -722,7 +798,6 @@ const DropdownPicker = ({
                             </TouchableOpacity>
                         </View>
 
-                        {/* 🔍 Search Input */}
                         <View style={ddStyles.searchContainer}>
                             <Ionicons
                                 name="search-outline"
@@ -747,7 +822,6 @@ const DropdownPicker = ({
                             )}
                         </View>
 
-                        {/* List */}
                         <FlatList
                             data={filteredOptions}
                             keyExtractor={(item) => item._id}
@@ -756,24 +830,23 @@ const DropdownPicker = ({
                                 <TouchableOpacity
                                     style={[
                                         ddStyles.option,
-                                        item._id === value &&
-                                        ddStyles.optionSelected,
+                                        item._id === value && ddStyles.optionSelected,
                                     ]}
                                     onPress={() => {
                                         onSelect(item);
                                         setOpen(false);
-                                        setSearch(""); // reset search
+                                        setSearch("");
                                     }}
                                 >
                                     <Text
                                         style={[
                                             ddStyles.optionText,
-                                            item._id === value &&
-                                            ddStyles.optionTextSelected,
+                                            item._id === value && ddStyles.optionTextSelected,
                                         ]}
                                     >
                                         {item.name}
                                     </Text>
+
                                     {item._id === value && (
                                         <Ionicons
                                             name="checkmark"
@@ -784,9 +857,7 @@ const DropdownPicker = ({
                                 </TouchableOpacity>
                             )}
                             ListEmptyComponent={
-                                <Text style={ddStyles.empty}>
-                                    No results found
-                                </Text>
+                                <Text style={ddStyles.empty}>No results found</Text>
                             }
                         />
                     </View>
@@ -796,9 +867,10 @@ const DropdownPicker = ({
     );
 };
 
-
 const ddStyles = StyleSheet.create({
-    wrapper: { marginBottom: 14 },
+    wrapper: {
+        marginBottom: 14,
+    },
     label: {
         fontSize: 12,
         fontWeight: "600",
@@ -818,8 +890,15 @@ const ddStyles = StyleSheet.create({
         paddingVertical: 13,
         minHeight: 48,
     },
-    triggerText: { fontSize: 14, fontWeight: "500", color: colors.secondary, flex: 1 },
-    placeholder: { color: colors.placeholder },
+    triggerText: {
+        fontSize: 14,
+        fontWeight: "500",
+        color: colors.secondary,
+        flex: 1,
+    },
+    placeholder: {
+        color: colors.placeholder,
+    },
     backdrop: {
         flex: 1,
         backgroundColor: "rgba(0,0,0,0.45)",
@@ -829,7 +908,7 @@ const ddStyles = StyleSheet.create({
         backgroundColor: colors.scaffoldBg,
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
-        maxHeight: "60%",
+        maxHeight: "75%",
         paddingBottom: 30,
     },
     sheetHeader: {
@@ -841,7 +920,11 @@ const ddStyles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: colors.formBorder,
     },
-    sheetTitle: { fontSize: 16, fontWeight: "700", color: colors.secondary },
+    sheetTitle: {
+        fontSize: 16,
+        fontWeight: "700",
+        color: colors.secondary,
+    },
     option: {
         flexDirection: "row",
         alignItems: "center",
@@ -851,9 +934,17 @@ const ddStyles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: colors.formBorder,
     },
-    optionSelected: { backgroundColor: "#EFF6FF" },
-    optionText: { fontSize: 14, color: colors.secondary },
-    optionTextSelected: { color: colors.primary, fontWeight: "600" },
+    optionSelected: {
+        backgroundColor: "#EFF6FF",
+    },
+    optionText: {
+        fontSize: 14,
+        color: colors.secondary,
+    },
+    optionTextSelected: {
+        color: colors.primary,
+        fontWeight: "600",
+    },
     empty: {
         textAlign: "center",
         color: colors.placeholder,
@@ -867,10 +958,11 @@ const ddStyles = StyleSheet.create({
         borderRadius: 8,
         paddingHorizontal: 10,
         paddingVertical: 6,
+        marginHorizontal: 20,
+        marginTop: 12,
         marginBottom: 10,
         gap: 6,
     },
-
     searchInput: {
         flex: 1,
         fontSize: 14,

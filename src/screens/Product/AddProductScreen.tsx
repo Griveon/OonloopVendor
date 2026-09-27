@@ -33,6 +33,7 @@ import { getUserData } from "../../components/AsyncStorage/AsyncStorage";
 import { getRequest, postRequest, uploadRequest } from "../../constants/ApiClient";
 import { API_ENDPOINTS } from "../../constants/ApiEndpoints";
 import ColorPicker from "react-native-wheel-color-picker";
+import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,6 +53,8 @@ type Variant = {
     stock: string;
     sku: string;
     price: string;
+    productSpecification: any;
+    productHandlingCharges: any;
     mrp: string;
     images: UploadedImage[];
     attributes: Record<string, any>;
@@ -65,6 +68,14 @@ type GstDetails = {
     priceIncludingGST: string;
 };
 
+type AvailabilityType = "always" | "scheduled";
+
+type ProductAvailability = {
+    type: AvailabilityType;
+    fromTime: string;
+    toTime: string;
+};
+
 type ProductForm = {
     name: string;
     description: string;
@@ -75,6 +86,8 @@ type ProductForm = {
     isFeatured: boolean;
     isTrending: boolean;
     returnable: boolean;
+    // availability
+    availability: ProductAvailability;
     // attributes
     material: string;
     pattern: string;
@@ -772,9 +785,13 @@ const VariantCard = ({
                                 placeholder="0"
                                 value={variant.price}
                                 onChangeText={(t: string) =>
-                                    onChange(variant.id, "price", t.replace(/\D/g, ""))
+                                    onChange(
+                                        variant.id,
+                                        "price",
+                                        t.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1")
+                                    )
                                 }
-                                keyboardType="numeric"
+                                keyboardType="decimal-pad"
                             />
                         </View>
                         <View style={{ flex: 1 }}>
@@ -800,6 +817,65 @@ const VariantCard = ({
                             />
                         </View>
                     </View>
+                    <View style={{ flex: 1 }}>
+                        <FloatingInput
+                            label="Handling Charges (₹)"
+                            placeholder="0"
+                            value={variant.productHandlingCharges}
+                            onChangeText={(t: string) =>
+                                onChange(
+                                    variant.id,
+                                    "productHandlingCharges",
+                                    t
+                                        .replace(/[^0-9.]/g, "")
+                                        .replace(/(\..*)\./g, "$1"),
+                                )
+                            }
+                            keyboardType="decimal-pad"
+                        />
+                    </View>
+
+                    <View style={variantStyles.customerPriceBox}>
+                        <View style={variantStyles.customerPriceIcon}>
+                            <Ionicons
+                                name="pricetag-outline"
+                                size={18}
+                                color={colors.primary}
+                            />
+                        </View>
+
+                        <View style={{ flex: 1 }}>
+                            <Text style={variantStyles.customerPriceLabel}>
+                                Customer Selling Price
+                            </Text>
+
+                            <Text style={variantStyles.customerPriceHint}>
+                                Price + Product Handling Charges
+                            </Text>
+                        </View>
+
+                        <Text style={variantStyles.customerPriceValue}>
+                            ₹
+                            {(
+                                parseFloat(variant.price || "0") +
+                                parseFloat(variant.productHandlingCharges || "0")
+                            ).toFixed(2)}
+                        </Text>
+                    </View>
+
+                    <FloatingInput
+                        label="Product Specification"
+                        placeholder="Enter product specification"
+                        value={variant.productSpecification}
+                        onChangeText={(t: string) =>
+                            onChange(
+                                variant.id,
+                                "productSpecification",
+                                t,
+                            )
+                        }
+                    />
+
                     <View style={variantStyles.row2}>
                         <View style={{ flex: 1 }}>
                             <DropdownPicker
@@ -918,6 +994,45 @@ const variantStyles = StyleSheet.create({
         backgroundColor: "#EFF6FF",
         alignItems: "center",
         justifyContent: "center",
+    },
+    customerPriceBox: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#EFF6FF",
+        borderWidth: 1.5,
+        borderColor: colors.primary,
+        borderRadius: 12,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        marginBottom: 14,
+        gap: 10,
+    },
+
+    customerPriceIcon: {
+        width: 34,
+        height: 34,
+        borderRadius: 8,
+        backgroundColor: "#DBEAFE",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+
+    customerPriceLabel: {
+        fontSize: 13,
+        fontWeight: "700",
+        color: colors.secondary,
+    },
+
+    customerPriceHint: {
+        fontSize: 11,
+        color: colors.placeholder,
+        marginTop: 2,
+    },
+
+    customerPriceValue: {
+        fontSize: 18,
+        fontWeight: "800",
+        color: colors.primary,
     },
 });
 
@@ -1233,6 +1348,257 @@ const sharedStyles = StyleSheet.create({
     },
 });
 
+// ─── Availability Selector ───────────────────────────────────────────────────
+
+const formatDateToTime = (date: Date) => {
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${hours}:${minutes}`;
+};
+
+const timeStringToDate = (time?: string, fallbackHour = 9) => {
+    const date = new Date();
+    const [hours, minutes] = (time || "").split(":").map(Number);
+
+    date.setHours(
+        Number.isFinite(hours) ? hours : fallbackHour,
+        Number.isFinite(minutes) ? minutes : 0,
+        0,
+        0
+    );
+
+    return date;
+};
+
+const TimePickerButton = ({
+    label,
+    value,
+    placeholder,
+    onPress,
+}: {
+    label: string;
+    value: string;
+    placeholder: string;
+    onPress: () => void;
+}) => (
+    <TouchableOpacity
+        activeOpacity={0.85}
+        style={availabilityStyles.timePickerButton}
+        onPress={onPress}
+    >
+        <View style={{ flex: 1 }}>
+            <Text style={availabilityStyles.timePickerLabel}>{label}</Text>
+            <Text
+                style={[
+                    availabilityStyles.timePickerValue,
+                    !value && availabilityStyles.timePickerPlaceholder,
+                ]}
+            >
+                {value || placeholder}
+            </Text>
+        </View>
+
+        <View style={availabilityStyles.timePickerIcon}>
+            <Ionicons name="time-outline" size={18} color={colors.primary} />
+        </View>
+    </TouchableOpacity>
+);
+
+const AvailabilitySelector = ({
+    value,
+    onChangeType,
+    fromTime,
+    toTime,
+    onChangeFromTime,
+    onChangeToTime,
+}: {
+    value: AvailabilityType;
+    onChangeType: (type: AvailabilityType) => void;
+    fromTime: string;
+    toTime: string;
+    onChangeFromTime: (time: string) => void;
+    onChangeToTime: (time: string) => void;
+}) => {
+    const isScheduled = value === "scheduled";
+    const [showFromPicker, setShowFromPicker] = useState(false);
+    const [showToPicker, setShowToPicker] = useState(false);
+
+    const handleFromTimeChange = (
+        event: DateTimePickerEvent,
+        selectedDate?: Date
+    ) => {
+        if (Platform.OS === "android") {
+            setShowFromPicker(false);
+        }
+
+        if (event?.type === "dismissed") {
+            return;
+        }
+
+        if (selectedDate) {
+            onChangeFromTime(formatDateToTime(selectedDate));
+        }
+    };
+
+    const handleToTimeChange = (
+        event: DateTimePickerEvent,
+        selectedDate?: Date
+    ) => {
+        if (Platform.OS === "android") {
+            setShowToPicker(false);
+        }
+
+        if (event?.type === "dismissed") {
+            return;
+        }
+
+        if (selectedDate) {
+            onChangeToTime(formatDateToTime(selectedDate));
+        }
+    };
+
+    return (
+        <View style={availabilityStyles.wrapper}>
+            <View style={availabilityStyles.header}>
+                <View style={availabilityStyles.iconBox}>
+                    <Ionicons name="time-outline" size={18} color={colors.primary} />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                    <Text style={availabilityStyles.title}>Product Availability</Text>
+                    <Text style={availabilityStyles.subtitle}>
+                        Choose when this product should be visible in user app.
+                    </Text>
+                </View>
+            </View>
+
+            <View style={availabilityStyles.optionRow}>
+                <TouchableOpacity
+                    activeOpacity={0.85}
+                    style={[
+                        availabilityStyles.optionCard,
+                        value === "always" && availabilityStyles.optionCardActive,
+                    ]}
+                    onPress={() => onChangeType("always")}
+                >
+                    <View style={availabilityStyles.radioOuter}>
+                        {value === "always" && <View style={availabilityStyles.radioInner} />}
+                    </View>
+
+                    <View style={{ flex: 1 }}>
+                        <Text
+                            style={[
+                                availabilityStyles.optionTitle,
+                                value === "always" && availabilityStyles.optionTitleActive,
+                            ]}
+                        >
+                            Always Available
+                        </Text>
+                        <Text style={availabilityStyles.optionHint}>
+                            Product is visible all day
+                        </Text>
+                    </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    activeOpacity={0.85}
+                    style={[
+                        availabilityStyles.optionCard,
+                        value === "scheduled" && availabilityStyles.optionCardActive,
+                    ]}
+                    onPress={() => onChangeType("scheduled")}
+                >
+                    <View style={availabilityStyles.radioOuter}>
+                        {value === "scheduled" && <View style={availabilityStyles.radioInner} />}
+                    </View>
+
+                    <View style={{ flex: 1 }}>
+                        <Text
+                            style={[
+                                availabilityStyles.optionTitle,
+                                value === "scheduled" && availabilityStyles.optionTitleActive,
+                            ]}
+                        >
+                            Scheduled
+                        </Text>
+                        <Text style={availabilityStyles.optionHint}>
+                            Visible only during selected time
+                        </Text>
+                    </View>
+                </TouchableOpacity>
+            </View>
+
+            {isScheduled && (
+                <View style={availabilityStyles.timeBox}>
+                    <View style={availabilityStyles.timeRow}>
+                        <View style={availabilityStyles.timeInputWrap}>
+                            <TimePickerButton
+                                label="From Time *"
+                                value={fromTime}
+                                placeholder="Select start time"
+                                onPress={() => setShowFromPicker(true)}
+                            />
+                        </View>
+
+                        <View style={availabilityStyles.timeInputWrap}>
+                            <TimePickerButton
+                                label="To Time *"
+                                value={toTime}
+                                placeholder="Select end time"
+                                onPress={() => setShowToPicker(true)}
+                            />
+                        </View>
+                    </View>
+
+                    {showFromPicker && (
+                        <DateTimePicker
+                            value={timeStringToDate(fromTime, 9)}
+                            mode="time"
+                            display={Platform.OS === "ios" ? "spinner" : "default"}
+                            is24Hour={true}
+                            onChange={handleFromTimeChange}
+                        />
+                    )}
+
+                    {showToPicker && (
+                        <DateTimePicker
+                            value={timeStringToDate(toTime, 22)}
+                            mode="time"
+                            display={Platform.OS === "ios" ? "spinner" : "default"}
+                            is24Hour={true}
+                            onChange={handleToTimeChange}
+                        />
+                    )}
+
+                    {Platform.OS === "ios" && (showFromPicker || showToPicker) && (
+                        <TouchableOpacity
+                            activeOpacity={0.85}
+                            style={availabilityStyles.doneButton}
+                            onPress={() => {
+                                setShowFromPicker(false);
+                                setShowToPicker(false);
+                            }}
+                        >
+                            <Text style={availabilityStyles.doneButtonText}>Done</Text>
+                        </TouchableOpacity>
+                    )}
+
+                    <View style={availabilityStyles.noteBox}>
+                        <Ionicons
+                            name="information-circle-outline"
+                            size={15}
+                            color={colors.primary}
+                        />
+                        <Text style={availabilityStyles.noteText}>
+                            Time is saved in 24-hour format. Example: 09:00 to 22:00. Overnight timing like 22:00 to 02:00 is also supported.
+                        </Text>
+                    </View>
+                </View>
+            )}
+        </View>
+    );
+};
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 const VendorAddProductScreen = ({ navigation, route }: any) => {
@@ -1265,6 +1631,11 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
         isFeatured: false,
         isTrending: false,
         returnable: false,
+        availability: {
+            type: "always",
+            fromTime: "",
+            toTime: "",
+        },
         material: "",
         pattern: "",
         sleeveLength: "",
@@ -1305,6 +1676,29 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
     const updateForm = (field: keyof ProductForm, value: any) =>
         setForm((p) => ({ ...p, [field]: value }));
 
+    const updateAvailability = (
+        field: keyof ProductAvailability,
+        value: string
+    ) => {
+        setForm((p) => ({
+            ...p,
+            availability: {
+                ...p.availability,
+                [field]: value,
+                ...(field === "type" && value === "always"
+                    ? {
+                        fromTime: "",
+                        toTime: "",
+                    }
+                    : {}),
+            },
+        }));
+    };
+
+    const isValidTime = (time: string) => {
+        return /^([01]\d|2[0-3]):([0-5]\d)$/.test(time);
+    };
+
     const updateGst = (field: keyof GstDetails, value: string) =>
         setForm((p) => ({ ...p, gst: { ...p.gst, [field]: value } }));
 
@@ -1319,7 +1713,9 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
         setDdLoading(true);
         try {
             const [catRes, brandRes, unitRes, gstRes, pcVariants] = await Promise.allSettled([
-                getRequest(API_ENDPOINTS.GETALLVENDORCATEGORIES),
+                getRequest(API_ENDPOINTS.GETALLVENDORCATEGORIES, {
+                    role: "vendor",
+                }),
                 getRequest(API_ENDPOINTS.BRANDSGETALL),
                 getRequest(API_ENDPOINTS.GETALLUNITS),
                 getRequest(API_ENDPOINTS.GETALLGSTRULES),
@@ -1390,6 +1786,8 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                 stock: "",
                 sku: "",
                 price: "",
+                productSpecification: "",
+                productHandlingCharges: 0,
                 mrp: "",
                 images: [],
                 attributes: {},
@@ -1491,10 +1889,19 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
     };
 
     // ── Step validations ───────────────────────────────────────────────────────
+    const isAvailabilityValid =
+        form.availability.type === "always" ||
+        (
+            form.availability.type === "scheduled" &&
+            isValidTime(form.availability.fromTime) &&
+            isValidTime(form.availability.toTime)
+        );
+
     const isStep1Valid =
         form.name.trim().length > 2 &&
         form.productCategoryId &&
-        form.categoryId;
+        form.categoryId &&
+        isAvailabilityValid;
 
     const isStep2Valid = true; // All optional attributes
 
@@ -1552,6 +1959,20 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
             return;
         }
 
+        if (form.availability.type === "scheduled") {
+            if (
+                !isValidTime(form.availability.fromTime) ||
+                !isValidTime(form.availability.toTime)
+            ) {
+                Toast.show({
+                    type: "error",
+                    text1: "Invalid Availability Time",
+                    text2: "Please enter valid time in HH:mm format. Example: 09:00",
+                });
+                return;
+            }
+        }
+
         let id = form.vendorId;
         if (!id) {
             const { user } = await getUserData();
@@ -1580,6 +2001,16 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                 isTrending: form.isTrending,
                 returnable: form.returnable,
                 minQty: parseInt(form.minQty || "1"),
+                availability:
+                    form.availability.type === "always"
+                        ? {
+                            type: "always",
+                        }
+                        : {
+                            type: "scheduled",
+                            fromTime: form.availability.fromTime,
+                            toTime: form.availability.toTime,
+                        },
                 attributes: {
                     brand: form.brandId || undefined,
                     material: form.material || undefined,
@@ -1596,6 +2027,7 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                     sku: v.sku,
                     price: parseFloat(v.price),
                     mrp: parseFloat(v.mrp || "0"),
+                    productSpecification: v.productSpecification?.trim() || "",
                 })),
                 gst: {
                     gstRuleId: form.gst.gstRuleId || undefined,
@@ -1888,6 +2320,19 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                     value={form.minQty}
                     onChangeText={(t: string) => updateForm("minQty", t.replace(/\D/g, ""))}
                     keyboardType="numeric"
+                />
+
+                <AvailabilitySelector
+                    value={form.availability.type}
+                    fromTime={form.availability.fromTime}
+                    toTime={form.availability.toTime}
+                    onChangeType={(type) => updateAvailability("type", type)}
+                    onChangeFromTime={(time) =>
+                        updateAvailability("fromTime", time)
+                    }
+                    onChangeToTime={(time) =>
+                        updateAvailability("toTime", time)
+                    }
                 />
 
                 <DropdownPicker
@@ -2396,6 +2841,170 @@ const step4Styles = StyleSheet.create({
         marginTop: 4,
     },
     calcText: { flex: 1, fontSize: 12, color: "#92400E", fontWeight: "500", lineHeight: 18 },
+});
+
+const availabilityStyles = StyleSheet.create({
+    wrapper: {
+        backgroundColor: colors.formBg,
+        borderRadius: 14,
+        borderWidth: 1.5,
+        borderColor: colors.formBorder,
+        padding: 14,
+        marginBottom: 14,
+    },
+    header: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        gap: 10,
+        marginBottom: 14,
+    },
+    iconBox: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        backgroundColor: "#EFF6FF",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    title: {
+        fontSize: 14,
+        fontWeight: "800",
+        color: colors.secondary,
+        marginBottom: 2,
+    },
+    subtitle: {
+        fontSize: 12,
+        color: colors.placeholder,
+        lineHeight: 17,
+    },
+    optionRow: {
+        gap: 10,
+    },
+    optionCard: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        borderWidth: 1.5,
+        borderColor: colors.formBorder,
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+        backgroundColor: colors.scaffoldBg,
+    },
+    optionCardActive: {
+        borderColor: colors.primary,
+        backgroundColor: "#EFF6FF",
+    },
+    radioOuter: {
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        borderWidth: 2,
+        borderColor: colors.primary,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    radioInner: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: colors.primary,
+    },
+    optionTitle: {
+        fontSize: 13,
+        fontWeight: "700",
+        color: colors.secondary,
+    },
+    optionTitleActive: {
+        color: colors.primary,
+    },
+    optionHint: {
+        fontSize: 11,
+        color: colors.placeholder,
+        marginTop: 2,
+    },
+    timeBox: {
+        marginTop: 14,
+        borderTopWidth: 1,
+        borderTopColor: colors.formBorder,
+        paddingTop: 14,
+    },
+    timeRow: {
+        flexDirection: "row",
+        gap: 10,
+    },
+    timeInputWrap: {
+        flex: 1,
+    },
+    timePickerButton: {
+        minHeight: 56,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        backgroundColor: colors.scaffoldBg,
+        borderWidth: 1.5,
+        borderColor: colors.formBorder,
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        marginBottom: 10,
+    },
+    timePickerLabel: {
+        fontSize: 11,
+        fontWeight: "700",
+        color: colors.secondary,
+        marginBottom: 4,
+    },
+    timePickerValue: {
+        fontSize: 15,
+        fontWeight: "800",
+        color: colors.secondary,
+    },
+    timePickerPlaceholder: {
+        fontSize: 13,
+        fontWeight: "600",
+        color: colors.placeholder,
+    },
+    timePickerIcon: {
+        width: 34,
+        height: 34,
+        borderRadius: 10,
+        backgroundColor: "#EFF6FF",
+        alignItems: "center",
+        justifyContent: "center",
+        marginLeft: 8,
+    },
+    doneButton: {
+        alignSelf: "flex-end",
+        backgroundColor: colors.primary,
+        borderRadius: 10,
+        paddingHorizontal: 18,
+        paddingVertical: 10,
+        marginTop: 8,
+        marginBottom: 8,
+    },
+    doneButtonText: {
+        color: "#fff",
+        fontSize: 13,
+        fontWeight: "800",
+    },
+    noteBox: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        gap: 7,
+        backgroundColor: "#EFF6FF",
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 9,
+        marginTop: 4,
+    },
+    noteText: {
+        flex: 1,
+        fontSize: 11,
+        color: colors.primary,
+        lineHeight: 16,
+        fontWeight: "500",
+    },
 });
 
 const step5Styles = StyleSheet.create({

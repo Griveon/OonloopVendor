@@ -33,6 +33,7 @@ import { getUserData } from "../../components/AsyncStorage/AsyncStorage";
 import { getRequest, postRequest, putRequest, uploadRequest } from "../../constants/ApiClient";
 import { API_ENDPOINTS } from "../../constants/ApiEndpoints";
 import ColorPicker from "react-native-wheel-color-picker";
+import DateTimePicker from "@react-native-community/datetimepicker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,6 +56,7 @@ type Variant = {
     price: string;
     mrp: string;
     images: UploadedImage[];
+    productSpecification: any;
     attributes: Record<string, any>;
     _serverId?: string;
 };
@@ -67,6 +69,14 @@ type GstDetails = {
     priceIncludingGST: string;
 };
 
+type AvailabilityType = "always" | "scheduled";
+
+type ProductAvailability = {
+    type: AvailabilityType;
+    fromTime: string;
+    toTime: string;
+};
+
 type ProductForm = {
     name: string;
     description: string;
@@ -77,6 +87,7 @@ type ProductForm = {
     isFeatured: boolean;
     isTrending: boolean;
     returnable: boolean;
+    availability: ProductAvailability;
     material: string;
     pattern: string;
     sleeveLength: string;
@@ -655,12 +666,16 @@ const VariantCard = ({
                         <View style={{ flex: 1 }}>
                             <FloatingInput
                                 label="Price (₹) *"
-                                placeholder="0"
+                                placeholder="0.00"
                                 value={variant.price}
                                 onChangeText={(t: string) =>
-                                    onChange(variant.id, "price", t.replace(/\D/g, ""))
+                                    onChange(
+                                        variant.id,
+                                        "price",
+                                        t.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1")
+                                    )
                                 }
-                                keyboardType="numeric"
+                                keyboardType="decimal-pad"
                             />
                         </View>
                         <View style={{ flex: 1 }}>
@@ -686,6 +701,20 @@ const VariantCard = ({
                             />
                         </View>
                     </View>
+
+                    <FloatingInput
+                        label="Product Specification"
+                        placeholder="Enter product specification"
+                        value={variant.productSpecification}
+                        onChangeText={(t: string) =>
+                            onChange(
+                                variant.id,
+                                "productSpecification",
+                                t,
+                            )
+                        }
+                    />
+
 
                     <View style={variantStyles.row2}>
                         <View style={{ flex: 1 }}>
@@ -1144,6 +1173,207 @@ const sharedStyles = StyleSheet.create({
     },
 });
 
+
+// ─── Availability Selector ───────────────────────────────────────────────────
+
+const timeStringToDate = (time?: string) => {
+    const date = new Date();
+    const [hours, minutes] = (time || "09:00").split(":").map(Number);
+    date.setHours(Number.isFinite(hours) ? hours : 9);
+    date.setMinutes(Number.isFinite(minutes) ? minutes : 0);
+    date.setSeconds(0);
+    date.setMilliseconds(0);
+    return date;
+};
+
+const dateToTimeString = (date: Date) => {
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${hours}:${minutes}`;
+};
+
+const AvailabilitySelector = ({
+    value,
+    onChangeType,
+    fromTime,
+    toTime,
+    onChangeFromTime,
+    onChangeToTime,
+}: {
+    value: AvailabilityType;
+    onChangeType: (type: AvailabilityType) => void;
+    fromTime: string;
+    toTime: string;
+    onChangeFromTime: (time: string) => void;
+    onChangeToTime: (time: string) => void;
+}) => {
+    const [pickerFor, setPickerFor] = useState<"from" | "to" | null>(null);
+    const isScheduled = value === "scheduled";
+
+    const pickerValue = pickerFor === "to"
+        ? timeStringToDate(toTime || "22:00")
+        : timeStringToDate(fromTime || "09:00");
+
+    const handleTimeChange = (_event: any, selectedDate?: Date) => {
+        if (Platform.OS === "android") {
+            setPickerFor(null);
+        }
+
+        if (!selectedDate || !pickerFor) {
+            return;
+        }
+
+        const formattedTime = dateToTimeString(selectedDate);
+
+        if (pickerFor === "from") {
+            onChangeFromTime(formattedTime);
+        } else {
+            onChangeToTime(formattedTime);
+        }
+    };
+
+    const openPicker = (type: "from" | "to") => {
+        setPickerFor(type);
+    };
+
+    return (
+        <View style={availabilityStyles.wrapper}>
+            <View style={availabilityStyles.header}>
+                <View style={availabilityStyles.iconBox}>
+                    <Ionicons name="time-outline" size={18} color={colors.primary} />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                    <Text style={availabilityStyles.title}>Product Availability</Text>
+                    <Text style={availabilityStyles.subtitle}>
+                        Choose when this product should be visible in user app.
+                    </Text>
+                </View>
+            </View>
+
+            <View style={availabilityStyles.optionRow}>
+                <TouchableOpacity
+                    activeOpacity={0.85}
+                    style={[
+                        availabilityStyles.optionCard,
+                        value === "always" && availabilityStyles.optionCardActive,
+                    ]}
+                    onPress={() => onChangeType("always")}
+                >
+                    <View style={availabilityStyles.radioOuter}>
+                        {value === "always" && <View style={availabilityStyles.radioInner} />}
+                    </View>
+
+                    <View style={{ flex: 1 }}>
+                        <Text
+                            style={[
+                                availabilityStyles.optionTitle,
+                                value === "always" && availabilityStyles.optionTitleActive,
+                            ]}
+                        >
+                            Always Available
+                        </Text>
+                        <Text style={availabilityStyles.optionHint}>
+                            Product is visible all day
+                        </Text>
+                    </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    activeOpacity={0.85}
+                    style={[
+                        availabilityStyles.optionCard,
+                        value === "scheduled" && availabilityStyles.optionCardActive,
+                    ]}
+                    onPress={() => onChangeType("scheduled")}
+                >
+                    <View style={availabilityStyles.radioOuter}>
+                        {value === "scheduled" && <View style={availabilityStyles.radioInner} />}
+                    </View>
+
+                    <View style={{ flex: 1 }}>
+                        <Text
+                            style={[
+                                availabilityStyles.optionTitle,
+                                value === "scheduled" && availabilityStyles.optionTitleActive,
+                            ]}
+                        >
+                            Scheduled
+                        </Text>
+                        <Text style={availabilityStyles.optionHint}>
+                            Visible only during selected time
+                        </Text>
+                    </View>
+                </TouchableOpacity>
+            </View>
+
+            {isScheduled && (
+                <View style={availabilityStyles.timeBox}>
+                    <View style={availabilityStyles.timeRow}>
+                        <TouchableOpacity
+                            activeOpacity={0.85}
+                            style={availabilityStyles.timePickerBtn}
+                            onPress={() => openPicker("from")}
+                        >
+                            <Text style={availabilityStyles.timeLabel}>From Time *</Text>
+                            <View style={availabilityStyles.timeValueRow}>
+                                <Text style={availabilityStyles.timeValue}>
+                                    {fromTime || "Select"}
+                                </Text>
+                                <Ionicons name="time-outline" size={18} color={colors.primary} />
+                            </View>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            activeOpacity={0.85}
+                            style={availabilityStyles.timePickerBtn}
+                            onPress={() => openPicker("to")}
+                        >
+                            <Text style={availabilityStyles.timeLabel}>To Time *</Text>
+                            <View style={availabilityStyles.timeValueRow}>
+                                <Text style={availabilityStyles.timeValue}>
+                                    {toTime || "Select"}
+                                </Text>
+                                <Ionicons name="time-outline" size={18} color={colors.primary} />
+                            </View>
+                        </TouchableOpacity>
+                    </View>
+
+                    {pickerFor && (
+                        <DateTimePicker
+                            value={pickerValue}
+                            mode="time"
+                            display={Platform.OS === "ios" ? "spinner" : "default"}
+                            is24Hour
+                            onChange={handleTimeChange}
+                        />
+                    )}
+
+                    {Platform.OS === "ios" && pickerFor && (
+                        <TouchableOpacity
+                            style={availabilityStyles.doneBtn}
+                            onPress={() => setPickerFor(null)}
+                        >
+                            <Text style={availabilityStyles.doneBtnText}>Done</Text>
+                        </TouchableOpacity>
+                    )}
+
+                    <View style={availabilityStyles.noteBox}>
+                        <Ionicons
+                            name="information-circle-outline"
+                            size={15}
+                            color={colors.primary}
+                        />
+                        <Text style={availabilityStyles.noteText}>
+                            Time is saved in 24-hour format. Overnight timing like 22:00 to 02:00 is also supported.
+                        </Text>
+                    </View>
+                </View>
+            )}
+        </View>
+    );
+};
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 const VendorEditProductScreen = ({ navigation, route }: any) => {
@@ -1179,6 +1409,11 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
         isFeatured: false,
         isTrending: false,
         returnable: false,
+        availability: {
+            type: "always",
+            fromTime: "",
+            toTime: "",
+        },
         material: "",
         pattern: "",
         sleeveLength: "",
@@ -1210,6 +1445,29 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
     const updateForm = (field: keyof ProductForm, value: any) =>
         setForm((p) => ({ ...p, [field]: value }));
 
+    const updateAvailability = (
+        field: keyof ProductAvailability,
+        value: string
+    ) => {
+        setForm((p) => ({
+            ...p,
+            availability: {
+                ...p.availability,
+                [field]: value,
+                ...(field === "type" && value === "always"
+                    ? {
+                        fromTime: "",
+                        toTime: "",
+                    }
+                    : {}),
+            },
+        }));
+    };
+
+    const isValidTime = (time: string) => {
+        return /^([01]\d|2[0-3]):([0-5]\d)$/.test(time);
+    };
+
     const updateGst = (field: keyof GstDetails, value: string) =>
         setForm((p) => ({ ...p, gst: { ...p.gst, [field]: value } }));
 
@@ -1235,7 +1493,9 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
         setDdLoading(true);
         try {
             const [catRes, brandRes, unitRes, gstRes, pcVariants] = await Promise.allSettled([
-                getRequest(API_ENDPOINTS.GETALLVENDORCATEGORIES),
+                getRequest(API_ENDPOINTS.GETALLVENDORCATEGORIES, {
+                    role: "vendor",
+                }),
                 getRequest(API_ENDPOINTS.BRANDSGETALL),
                 getRequest(API_ENDPOINTS.GETALLUNITS),
                 getRequest(API_ENDPOINTS.GETALLGSTRULES),
@@ -1309,6 +1569,11 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
                 isFeatured: p.isFeatured ?? false,
                 isTrending: p.isTrending ?? false,
                 returnable: p.returnable ?? false,
+                availability: {
+                    type: p.availability?.type === "scheduled" ? "scheduled" : "always",
+                    fromTime: p.availability?.fromTime ?? "",
+                    toTime: p.availability?.toTime ?? "",
+                },
                 material: p.attributes?.material ?? "",
                 pattern: p.attributes?.pattern ?? "",
                 sleeveLength: p.attributes?.sleeveLength ?? "",
@@ -1346,6 +1611,7 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
                     stock: v.stock != null ? String(v.stock) : "",
                     sku: v.sku ?? "",
                     price: v.price != null ? String(v.price) : "",
+                    productSpecification: v.productSpecification ?? "",
                     mrp: v.mrp != null ? String(v.mrp) : "",
                     attributes: v.attributes ?? {},
                     images: Array.isArray(v.images)
@@ -1425,6 +1691,7 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
                 sku: "",
                 price: "",
                 mrp: "",
+                productSpecification: "",
                 images: [],
                 attributes: {},
             },
@@ -1541,10 +1808,19 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
     // }, [form.gst.gstPercent]);
 
     // ── Step validations (synced with Add) ────────────────────────────────────
+    const isAvailabilityValid =
+        form.availability.type === "always" ||
+        (
+            form.availability.type === "scheduled" &&
+            isValidTime(form.availability.fromTime) &&
+            isValidTime(form.availability.toTime)
+        );
+
     const isStep1Valid =
         form.name.trim().length > 2 &&
         !!form.productCategoryId &&
-        !!form.categoryId;
+        !!form.categoryId &&
+        isAvailabilityValid;
 
     const isStep2Valid = true;
 
@@ -1589,6 +1865,20 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
             return;
         }
 
+        if (form.availability.type === "scheduled") {
+            if (
+                !isValidTime(form.availability.fromTime) ||
+                !isValidTime(form.availability.toTime)
+            ) {
+                Toast.show({
+                    type: "error",
+                    text1: "Invalid Availability Time",
+                    text2: "Please select valid From Time and To Time",
+                });
+                return;
+            }
+        }
+
         let vid = form.vendorId;
         if (!vid) {
             const { user } = await getUserData();
@@ -1622,6 +1912,16 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
                 isTrending: form.isTrending,
                 returnable: form.returnable,
                 minQty: parseInt(form.minQty || "1"),
+                availability:
+                    form.availability.type === "always"
+                        ? {
+                            type: "always",
+                        }
+                        : {
+                            type: "scheduled",
+                            fromTime: form.availability.fromTime,
+                            toTime: form.availability.toTime,
+                        },
                 attributes: {
                     brand: form.brandId || undefined,
                     material: form.material || undefined,
@@ -1652,6 +1952,7 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
                     stock: parseInt(v.stock || "0"),
                     sku: v.sku,
                     price: parseFloat(v.price),
+                    productSpecification: v.productSpecification?.trim() || "",
                     mrp: parseFloat(v.mrp || "0"),
                     images: (v.images || [])
                         .filter((img) => img.isExisting)        // ← ADD THIS
@@ -1920,6 +2221,15 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
                     value={form.minQty}
                     onChangeText={(t: string) => updateForm("minQty", t.replace(/\D/g, ""))}
                     keyboardType="numeric"
+                />
+
+                <AvailabilitySelector
+                    value={form.availability.type}
+                    fromTime={form.availability.fromTime}
+                    toTime={form.availability.toTime}
+                    onChangeType={(type) => updateAvailability("type", type)}
+                    onChangeFromTime={(time) => updateAvailability("fromTime", time)}
+                    onChangeToTime={(time) => updateAvailability("toTime", time)}
                 />
 
                 <DropdownPicker
@@ -2351,6 +2661,155 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
         </SafeAreaView>
     );
 };
+
+
+const availabilityStyles = StyleSheet.create({
+    wrapper: {
+        backgroundColor: colors.formBg,
+        borderRadius: 14,
+        borderWidth: 1.5,
+        borderColor: colors.formBorder,
+        padding: 14,
+        marginBottom: 14,
+    },
+    header: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        gap: 10,
+        marginBottom: 14,
+    },
+    iconBox: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        backgroundColor: "#EFF6FF",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    title: {
+        fontSize: 14,
+        fontWeight: "800",
+        color: colors.secondary,
+        marginBottom: 2,
+    },
+    subtitle: {
+        fontSize: 12,
+        color: colors.placeholder,
+        lineHeight: 17,
+    },
+    optionRow: {
+        gap: 10,
+    },
+    optionCard: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        borderWidth: 1.5,
+        borderColor: colors.formBorder,
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+        backgroundColor: colors.scaffoldBg,
+    },
+    optionCardActive: {
+        borderColor: colors.primary,
+        backgroundColor: "#EFF6FF",
+    },
+    radioOuter: {
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        borderWidth: 2,
+        borderColor: colors.primary,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    radioInner: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: colors.primary,
+    },
+    optionTitle: {
+        fontSize: 13,
+        fontWeight: "700",
+        color: colors.secondary,
+    },
+    optionTitleActive: {
+        color: colors.primary,
+    },
+    optionHint: {
+        fontSize: 11,
+        color: colors.placeholder,
+        marginTop: 2,
+    },
+    timeBox: {
+        marginTop: 14,
+        borderTopWidth: 1,
+        borderTopColor: colors.formBorder,
+        paddingTop: 14,
+    },
+    timeRow: {
+        flexDirection: "row",
+        gap: 10,
+    },
+    timePickerBtn: {
+        flex: 1,
+        borderWidth: 1.5,
+        borderColor: colors.formBorder,
+        borderRadius: 12,
+        backgroundColor: colors.scaffoldBg,
+        paddingHorizontal: 12,
+        paddingVertical: 11,
+    },
+    timeLabel: {
+        fontSize: 11,
+        fontWeight: "700",
+        color: colors.placeholder,
+        marginBottom: 6,
+    },
+    timeValueRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 8,
+    },
+    timeValue: {
+        fontSize: 15,
+        fontWeight: "800",
+        color: colors.secondary,
+    },
+    doneBtn: {
+        alignSelf: "flex-end",
+        marginTop: 8,
+        backgroundColor: colors.primary,
+        borderRadius: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+    },
+    doneBtnText: {
+        color: "#fff",
+        fontSize: 13,
+        fontWeight: "700",
+    },
+    noteBox: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        gap: 7,
+        backgroundColor: "#EFF6FF",
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 9,
+        marginTop: 12,
+    },
+    noteText: {
+        flex: 1,
+        fontSize: 11,
+        color: colors.primary,
+        lineHeight: 16,
+        fontWeight: "500",
+    },
+});
 
 // ─── Step-specific styles ─────────────────────────────────────────────────────
 

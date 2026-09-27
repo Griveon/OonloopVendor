@@ -52,5 +52,13 @@ export const API_ENDPOINTS = {
     VENDORKYCDOCUMENTSPREVIEW: `/vendor-profile/kycdocuments/preview`,
     VENDORACCOUNTSTATEMENTSGET: "/vendoraccountstatements/get",
     VENDORACCOUNTSTATEMENTSEXPORT: "/vendoraccountstatements/getexport",
+    PROFILEIMAGEUPDATE: "/vendor-profile/profileimage",
+    STOREIMAGESUPLOAD: '/vendor-profile/store-images',
+    STOREIMAGESUPDATE: '/vendor-profile/store-images',
+    STOREIMAGESDELETE: '/vendor-profile/store-images',
+    STOREIMAGESGET: '/vendor-profile/store-images',
+    FIREBASE_TOKEN_SAVE: "/firebasetokens/save",
+    USERPREFERENCE_SET: "/userpreference/set",
+    USERPREFERENCE_GET: "/userpreference/get",
 
 }

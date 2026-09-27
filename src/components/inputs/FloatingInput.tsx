@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, TextStyle, ViewStyle } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, TextStyle, ViewStyle, KeyboardTypeOptions } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { colors, inputStyles, localStyles } from "../../constants/AppThem";
 
@@ -8,7 +8,7 @@ interface FloatingInputProps {
     value?: string;
     onChangeText?: (text: string) => void;
     placeholder?: string;
-    keyboardType?: "default" | "numeric" | "email-address" | "phone-pad";
+    keyboardType?: KeyboardTypeOptions;
     autoCapitalize?: "none" | "sentences" | "words" | "characters";
     secureTextEntry?: boolean;
     showToggle?: boolean;

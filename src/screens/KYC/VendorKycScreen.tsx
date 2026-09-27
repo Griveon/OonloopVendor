@@ -84,7 +84,7 @@ const KYC_DOC_CONFIG: Record<
     aadhaarCard: {
         label: "Aadhaar Card",
         icon: "finger-print-outline",
-        required: true,
+        required: false,
         hint: "Upload clear Aadhaar card image",
     },
     panCard: {
@@ -1214,8 +1214,8 @@ const VendorKycScreen = ({ navigation, route }: any) => {
                                 color={colors.primary}
                             />
                             <Text style={localStyles.infoText}>
-                                Aadhaar Card and PAN Card are mandatory. Other business
-                                documents help speed up vendor verification.
+                                PAN Card is mandatory. Aadhaar Card and other business
+                                documents are optional and help speed up vendor verification.
                             </Text>
                         </View>
 

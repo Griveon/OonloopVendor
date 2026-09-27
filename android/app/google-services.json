@@ -1,0 +1,124 @@
+{
+  "project_info": {
+    "project_number": "742510392188",
+    "project_id": "oonllop",
+    "storage_bucket": "oonllop.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:742510392188:android:a8fb9678823b3493606af9",
+        "android_client_info": {
+          "package_name": "com.example.oonloop_driver"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBIHefl7BTQfGz37MugFkJJDICfieLiYeI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:742510392188:android:70a14ae394b09d86606af9",
+        "android_client_info": {
+          "package_name": "com.example.oonloop_mobile_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBIHefl7BTQfGz37MugFkJJDICfieLiYeI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:742510392188:android:28353478abaeab79606af9",
+        "android_client_info": {
+          "package_name": "com.example.oonloop_vendor_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBIHefl7BTQfGz37MugFkJJDICfieLiYeI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:742510392188:android:86d04e3572e5d715606af9",
+        "android_client_info": {
+          "package_name": "com.oonloop.user"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBIHefl7BTQfGz37MugFkJJDICfieLiYeI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:742510392188:android:8256fdb08e56b4c5606af9",
+        "android_client_info": {
+          "package_name": "com.oonloopdriver"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBIHefl7BTQfGz37MugFkJJDICfieLiYeI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:742510392188:android:5b2802de54a48467606af9",
+        "android_client_info": {
+          "package_name": "com.oonloopvendor.merchant"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBIHefl7BTQfGz37MugFkJJDICfieLiYeI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

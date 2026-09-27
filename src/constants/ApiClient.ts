@@ -217,3 +217,92 @@ export const uploadRequest = async (
         };
     }
 };
+
+/**
+ * PUT-based multipart upload — needed because the profile-image route is:
+ *   vendorProfileRoutes.put("/profile-image", authMiddleware, upload.single("profileImage"), controller.updateProfileImage)
+ * axios needs `transformRequest: data => data` so it doesn't try to JSON.stringify the FormData,
+ * and the Content-Type header must NOT be hardcoded to multipart/form-data on some RN/axios
+ * versions — letting the platform set the boundary avoids "Network request failed" issues.
+ * If you hit boundary issues on Android, hardcode "multipart/form-data" back in like uploadRequest above.
+ */
+export const uploadPutRequest = async (
+    endpoint: string,
+    formData: FormData,
+    authRequired = true
+) => {
+    try {
+        const headers: Record<string, string> = {};
+
+        if (authRequired) {
+            const token = await AsyncStorage.getItem("userToken");
+
+            if (token) {
+                headers.Authorization = `Bearer ${token}`;
+            }
+        }
+
+        const response = await axios.put(`${API_BASE_URL}${endpoint}`, formData, {
+            headers: {
+                ...headers,
+                "Content-Type": "multipart/form-data",
+            },
+            transformRequest: data => data,
+        });
+
+        return response.data;
+    } catch (error: any) {
+        console.error("UPLOAD (PUT) API Error:", error?.response?.data || error);
+
+        const isUnauthorized = await redirectToLoginIfUnauthorized(error);
+
+        if (!isUnauthorized) {
+            showApiError(error, "Upload failed");
+        }
+
+        return {
+            success: false,
+            unauthorized: isUnauthorized,
+            message: getErrorMessage(error, "Upload failed"),
+        };
+    }
+
+};
+
+export const deleteRequest = async (
+    endpoint: string,
+    data?: any,
+    authRequired = true
+) => {
+    try {
+        const headers = await getAuthHeaders(authRequired);
+
+        const response = await axios.delete(
+            `${API_BASE_URL}${endpoint}`,
+            {
+                headers,
+                data,
+            }
+        );
+
+        return response.data;
+    } catch (error: any) {
+        console.error(
+            "API DELETE Error:",
+            error?.response?.data || error
+        );
+
+        const isUnauthorized =
+            await redirectToLoginIfUnauthorized(error);
+
+        if (!isUnauthorized) {
+            showApiError(error);
+        }
+
+        return {
+            success: false,
+            unauthorized: isUnauthorized,
+            message: getErrorMessage(error),
+        };
+    }
+};
