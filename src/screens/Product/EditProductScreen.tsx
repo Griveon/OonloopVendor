@@ -35,6 +35,7 @@ import { API_ENDPOINTS } from "../../constants/ApiEndpoints";
 import ColorPicker from "react-native-wheel-color-picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type UploadedImage = {
@@ -42,6 +43,13 @@ type UploadedImage = {
     name: string;
     type: string;
     isExisting?: boolean;
+};
+
+type AdditionalHandlingSnapshot = {
+    enabled: boolean;
+    percentage: number;
+    maxAmount: number;
+    amount?: number;
 };
 
 type Variant = {
@@ -54,6 +62,12 @@ type Variant = {
     stock: string;
     sku: string;
     price: string;
+    productHandling?: string;
+    productHandlingCharges?: string;
+    customerSellingPrice?: string;
+    finalSellingPrice?: number;
+    additionalHandling?: AdditionalHandlingSnapshot;
+    pricingError?: string;
     mrp: string;
     images: UploadedImage[];
     productSpecification: any;
@@ -101,6 +115,160 @@ type ProductForm = {
 };
 
 type DropdownOption = { _id: string; name: string;[key: string]: any };
+type CalculationCacheEntry = { price: string; mrp: string; categoryId: string };
+type VariantPricingFields = Pick<
+    Variant,
+    "price" | "mrp" | "stock" | "productHandling" | "productHandlingCharges" | "customerSellingPrice" | "pricingError"
+>;
+
+const toFiniteNumber = (value: any): number | null => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+const formatCurrency = (value: any): string => {
+    const parsed = toFiniteNumber(value);
+    if (parsed == null) return "₹0.00";
+
+    return `₹${parsed.toLocaleString("en-IN", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    })}`;
+};
+
+const getPriceOverMrpError = (price: any, mrp: any): string | undefined => {
+    const priceNum = toFiniteNumber(price);
+    const mrpNum = toFiniteNumber(mrp);
+
+    if (priceNum != null && mrpNum != null && priceNum > 0 && mrpNum > 0 && priceNum > mrpNum) {
+        return "Price cannot exceed MRP.";
+    }
+
+    return undefined;
+};
+
+const getCustomerPriceOverMrpError = (customerSellingPrice: any, mrp: any): string | undefined => {
+    const customerSellingPriceNum = toFiniteNumber(customerSellingPrice);
+    const mrpNum = toFiniteNumber(mrp);
+
+    if (
+        customerSellingPriceNum != null &&
+        mrpNum != null &&
+        customerSellingPriceNum > mrpNum
+    ) {
+        return "Calculated customer price exceeds MRP. Please try again.";
+    }
+
+    return undefined;
+};
+
+const clearCalculatedPricing = <T extends Variant>(variant: T, pricingError?: string): T => ({
+    ...variant,
+    productHandling: "",
+    productHandlingCharges: "",
+    customerSellingPrice: "",
+    finalSellingPrice: 0,
+    additionalHandling: undefined,
+    pricingError,
+});
+
+const hasAdditionalHandlingConfig = (handling: any): boolean =>
+    handling?.enabled === true;
+
+const hasCalculatedPricing = (variant: Variant): boolean => {
+    if (variant.pricingError) return false;
+
+    const sellerPrice = toFiniteNumber(variant.price);
+    const mrp = toFiniteNumber(variant.mrp);
+    const handling = toFiniteNumber(variant.productHandling ?? variant.productHandlingCharges);
+    const customerSellingPrice = toFiniteNumber(variant.customerSellingPrice);
+
+    return (
+        sellerPrice != null &&
+        sellerPrice > 0 &&
+        mrp != null &&
+        mrp > 0 &&
+        handling != null &&
+        customerSellingPrice != null
+    );
+};
+
+const isVariantPricingReady = (variant: VariantPricingFields): boolean => {
+    const sellerPrice = toFiniteNumber(variant.price);
+    const mrp = toFiniteNumber(variant.mrp);
+    const stock = toFiniteNumber(variant.stock);
+
+    return (
+        sellerPrice != null &&
+        sellerPrice > 0 &&
+        mrp != null &&
+        mrp > 0 &&
+        stock != null &&
+        stock >= 0 &&
+        sellerPrice <= mrp &&
+        !getCustomerPriceOverMrpError(variant.customerSellingPrice, variant.mrp) &&
+        !variant.pricingError &&
+        hasCalculatedPricing(variant as Variant)
+    );
+};
+
+const VariantPricingSummary = ({ variant }: { variant: Variant }) => {
+    if (!hasCalculatedPricing(variant)) return null;
+
+    const sellerPrice = toFiniteNumber(variant.price);
+    const handling = toFiniteNumber(variant.productHandling ?? variant.productHandlingCharges);
+    const customerSellingPrice = toFiniteNumber(variant.customerSellingPrice);
+    const additionalHandling = variant.additionalHandling;
+    const additionalAmount = toFiniteNumber(additionalHandling?.amount);
+    const showCategoryPortion =
+        additionalHandling?.enabled === true &&
+        additionalAmount != null &&
+        additionalAmount > 0;
+    const showCategoryNote =
+        showCategoryPortion &&
+        toFiniteNumber(additionalHandling?.percentage) != null &&
+        toFiniteNumber(additionalHandling?.maxAmount) != null;
+
+    return (
+        <View style={variantStyles.pricingSummaryBox}>
+            <Text style={variantStyles.pricingSummaryTitle}>Pricing Summary</Text>
+
+            <View style={variantStyles.summaryRow}>
+                <Text style={variantStyles.summaryLabel}>Seller Price</Text>
+                <Text style={variantStyles.summaryValue}>{formatCurrency(sellerPrice)}</Text>
+            </View>
+
+            <View style={variantStyles.summaryRow}>
+                <Text style={variantStyles.summaryLabel}>Total Handling</Text>
+                <Text style={variantStyles.summaryValue}>{formatCurrency(handling)}</Text>
+            </View>
+
+            {showCategoryPortion && (
+                <View style={variantStyles.summaryRow}>
+                    <Text style={variantStyles.summarySubLabel}>Category Portion</Text>
+                    <Text style={variantStyles.summarySubValue}>
+                        {formatCurrency(additionalAmount)}
+                    </Text>
+                </View>
+            )}
+
+            <View style={variantStyles.summaryDivider} />
+
+            <View style={variantStyles.summaryRow}>
+                <Text style={variantStyles.summaryTotalLabel}>Customer Selling Price</Text>
+                <Text style={variantStyles.summaryTotalValue}>
+                    {formatCurrency(customerSellingPrice)}
+                </Text>
+            </View>
+
+            {showCategoryNote && (
+                <Text style={variantStyles.summaryNote}>
+                    Includes {additionalHandling?.percentage}% category handling, capped at ₹{additionalHandling?.maxAmount}.
+                </Text>
+            )}
+        </View>
+    );
+};
 
 // ─── Steps Config ─────────────────────────────────────────────────────────────
 
@@ -588,6 +756,7 @@ const VariantCard = ({
     onRemove,
     onPickImages,
     onRemoveImage,
+    onBlurPricing,
 }: {
     variant: Variant;
     index: number;
@@ -597,6 +766,7 @@ const VariantCard = ({
     onRemove: (id: string) => void;
     onPickImages: (id: string) => void;
     onRemoveImage: (variantId: string, imageIndex: number) => void;
+    onBlurPricing?: (variantId: string) => void;
 }) => {
     const [expanded, setExpanded] = useState(true);
     const selectedVariant = variantOptions.find((v) => v._id === variant.variantId);
@@ -665,8 +835,8 @@ const VariantCard = ({
                     <View style={variantStyles.row2}>
                         <View style={{ flex: 1 }}>
                             <FloatingInput
-                                label="Price (₹) *"
-                                placeholder="0.00"
+                                label="Seller Price (₹) *"
+                                placeholder="0"
                                 value={variant.price}
                                 onChangeText={(t: string) =>
                                     onChange(
@@ -675,6 +845,7 @@ const VariantCard = ({
                                         t.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1")
                                     )
                                 }
+                                onBlur={() => onBlurPricing?.(variant.id)}
                                 keyboardType="decimal-pad"
                             />
                         </View>
@@ -686,6 +857,7 @@ const VariantCard = ({
                                 onChangeText={(t: string) =>
                                     onChange(variant.id, "mrp", t.replace(/[^0-9.]/g, ""))
                                 }
+                                onBlur={() => onBlurPricing?.(variant.id)}
                                 keyboardType="numeric"
                             />
                         </View>
@@ -701,6 +873,72 @@ const VariantCard = ({
                             />
                         </View>
                     </View>
+
+                    {!!variant.pricingError && (
+                        <Text style={variantStyles.pricingErrorText}>
+                            {variant.pricingError}
+                        </Text>
+                    )}
+
+                    <View style={variantStyles.row2}>
+                        <View style={{ flex: 1 }}>
+                            <FloatingInput
+                                label="Product Handling (₹)"
+                                placeholder="0.00"
+                                value={
+                                    variant.productHandling != null && variant.productHandling !== ""
+                                        ? Number(variant.productHandling).toFixed(2)
+                                        : (variant.productHandlingCharges != null && variant.productHandlingCharges !== ""
+                                            ? Number(variant.productHandlingCharges).toFixed(2)
+                                            : "0.00")
+                                }
+                                editable={false}
+                                keyboardType="decimal-pad"
+                            />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <FloatingInput
+                                label="Customer Selling Price (₹)"
+                                placeholder="0.00"
+                                value={
+                                    variant.customerSellingPrice != null && variant.customerSellingPrice !== ""
+                                        ? Number(variant.customerSellingPrice).toFixed(2)
+                                        : "0.00"
+                                }
+                                editable={false}
+                                keyboardType="decimal-pad"
+                            />
+                        </View>
+                    </View>
+
+                    {hasCalculatedPricing(variant) && (
+                    <View style={variantStyles.customerPriceBox}>
+                        <View style={variantStyles.customerPriceIcon}>
+                            <Ionicons
+                                name="pricetag-outline"
+                                size={18}
+                                color={colors.primary}
+                            />
+                        </View>
+
+                        <View style={{ flex: 1 }}>
+                            <Text style={variantStyles.customerPriceLabel}>
+                                Customer Selling Price
+                            </Text>
+
+                            <Text style={variantStyles.customerPriceHint}>
+                                Price + Product Handling (Capped at MRP)
+                            </Text>
+                        </View>
+
+                        <Text style={variantStyles.customerPriceValue}>
+                            ₹
+                            {Number(variant.customerSellingPrice).toFixed(2)}
+                        </Text>
+                    </View>
+                    )}
+
+                    <VariantPricingSummary variant={variant} />
 
                     <FloatingInput
                         label="Product Specification"
@@ -803,6 +1041,13 @@ const variantStyles = StyleSheet.create({
     variantSub: { fontSize: 12, color: colors.placeholder, marginTop: 1 },
     body: { padding: 14, paddingTop: 4 },
     row2: { flexDirection: "row", gap: 10 },
+    pricingErrorText: {
+        color: colors.error,
+        fontSize: 12,
+        fontWeight: "600",
+        marginTop: -4,
+        marginBottom: 10,
+    },
     imagesLabel: {
         fontSize: 12,
         fontWeight: "600",
@@ -841,6 +1086,104 @@ const variantStyles = StyleSheet.create({
         backgroundColor: "#EFF6FF",
         alignItems: "center",
         justifyContent: "center",
+    },
+    customerPriceBox: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#EFF6FF",
+        borderWidth: 1.5,
+        borderColor: colors.primary,
+        borderRadius: 12,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        marginBottom: 14,
+        gap: 10,
+    },
+    customerPriceIcon: {
+        width: 34,
+        height: 34,
+        borderRadius: 8,
+        backgroundColor: "#DBEAFE",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    customerPriceLabel: {
+        fontSize: 13,
+        fontWeight: "700",
+        color: colors.secondary,
+    },
+    customerPriceHint: {
+        fontSize: 11,
+        color: colors.placeholder,
+        marginTop: 2,
+    },
+    customerPriceValue: {
+        fontSize: 18,
+        fontWeight: "800",
+        color: colors.primary,
+    },
+    pricingSummaryBox: {
+        backgroundColor: colors.formBg,
+        borderWidth: 1.5,
+        borderColor: colors.formBorder,
+        borderRadius: 12,
+        padding: 14,
+        marginBottom: 14,
+        gap: 8,
+    },
+    pricingSummaryTitle: {
+        fontSize: 13,
+        fontWeight: "800",
+        color: colors.secondary,
+        marginBottom: 2,
+    },
+    summaryRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+    },
+    summaryLabel: {
+        fontSize: 12,
+        color: colors.label,
+        fontWeight: "500",
+    },
+    summaryValue: {
+        fontSize: 12,
+        color: colors.secondary,
+        fontWeight: "700",
+    },
+    summarySubLabel: {
+        fontSize: 12,
+        color: colors.placeholder,
+        fontWeight: "500",
+        paddingLeft: 12,
+    },
+    summarySubValue: {
+        fontSize: 12,
+        color: colors.placeholder,
+        fontWeight: "700",
+    },
+    summaryDivider: {
+        height: 1,
+        backgroundColor: colors.formBorder,
+        marginVertical: 2,
+    },
+    summaryTotalLabel: {
+        fontSize: 13,
+        color: colors.secondary,
+        fontWeight: "800",
+    },
+    summaryTotalValue: {
+        fontSize: 15,
+        color: colors.primary,
+        fontWeight: "800",
+    },
+    summaryNote: {
+        fontSize: 11,
+        color: colors.placeholder,
+        lineHeight: 16,
+        marginTop: 2,
     },
 });
 
@@ -1445,6 +1788,15 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
     const updateForm = (field: keyof ProductForm, value: any) =>
         setForm((p) => ({ ...p, [field]: value }));
 
+    const selectedCategory = useMemo(
+        () => categories.find((category) => category._id === form.categoryId),
+        [categories, form.categoryId]
+    );
+
+    const selectedAdditionalHandling = selectedCategory?.additionalHandling;
+    const showAdditionalHandlingInfo =
+        hasAdditionalHandlingConfig(selectedAdditionalHandling);
+
     const updateAvailability = (
         field: keyof ProductAvailability,
         value: string
@@ -1600,32 +1952,67 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
 
             // Patch variants
             if (Array.isArray(p.variants)) {
-                const mapped: Variant[] = p.variants.map((v: any) => ({
-                    id: v._id ?? Date.now().toString(),
-                    _serverId: v._id,
-                    variantId: v.variantId?._id ?? v.variantId ?? "",
-                    size: v.attributes?.size ?? "",
-                    color: v.attributes?.color ?? "",
-                    unit: v.unit?._id ?? v.unit ?? "",
-                    unitValue: v.unitValue != null ? String(v.unitValue) : "1",
-                    stock: v.stock != null ? String(v.stock) : "",
-                    sku: v.sku ?? "",
-                    price: v.price != null ? String(v.price) : "",
-                    productSpecification: v.productSpecification ?? "",
-                    mrp: v.mrp != null ? String(v.mrp) : "",
-                    attributes: v.attributes ?? {},
-                    images: Array.isArray(v.images)
-                        ? v.images.map((img: any) => ({
-                            uri: typeof img === "string" ? img : img?.url ?? img?.uri ?? "",
-                            name:
-                                typeof img === "string"
-                                    ? img.split("/").pop() ?? "image.jpg"
-                                    : img?.name ?? "image.jpg",
-                            type: "image/jpeg",
-                            isExisting: true,
-                        }))
-                        : [],
-                }));
+                const mapped: Variant[] = p.variants.map((v: any) => {
+                    const priceStr = v.price != null ? String(v.price) : "";
+                    const mrpStr = v.mrp != null ? String(v.mrp) : "";
+                    const handling =
+                        v.productHandling != null
+                            ? String(v.productHandling)
+                            : (v.productHandlingCharges != null
+                                ? String(v.productHandlingCharges)
+                                : "0");
+                    const custSellingPrice =
+                        v.customerSellingPrice != null
+                            ? String(v.customerSellingPrice)
+                            : (v.finalSellingPrice != null
+                                ? String(v.finalSellingPrice)
+                                : (priceStr || "0"));
+                    const vKey = v._id ?? Date.now().toString();
+                    const pricingError =
+                        getPriceOverMrpError(priceStr, mrpStr) ||
+                        getCustomerPriceOverMrpError(custSellingPrice, mrpStr);
+
+                    if (!pricingError) {
+                        lastCalculatedRef.current[vKey] = {
+                            price: priceStr.trim(),
+                            mrp: mrpStr.trim(),
+                            categoryId: loadedCategoryId,
+                        };
+                    }
+
+                    return {
+                        id: vKey,
+                        _serverId: v._id,
+                        variantId: v.variantId?._id ?? v.variantId ?? "",
+                        size: v.attributes?.size ?? "",
+                        color: v.attributes?.color ?? "",
+                        unit: v.unit?._id ?? v.unit ?? "",
+                        unitValue: v.unitValue != null ? String(v.unitValue) : "1",
+                        stock: v.stock != null ? String(v.stock) : "",
+                        sku: v.sku ?? "",
+                        price: priceStr,
+                        productSpecification: v.productSpecification ?? "",
+                        productHandling: handling,
+                        productHandlingCharges: handling,
+                        customerSellingPrice: custSellingPrice,
+                        finalSellingPrice: parseFloat(custSellingPrice || "0"),
+                        additionalHandling: v.additionalHandling,
+                        pricingError,
+                        mrp: mrpStr,
+                        attributes: v.attributes ?? {},
+                        images: Array.isArray(v.images)
+                            ? v.images.map((img: any) => ({
+                                uri: typeof img === "string" ? img : img?.url ?? img?.uri ?? "",
+                                name:
+                                    typeof img === "string"
+                                        ? img.split("/").pop() ?? "image.jpg"
+                                        : img?.name ?? "image.jpg",
+                                type: "image/jpeg",
+                                isExisting: true,
+                            }))
+                            : [],
+                    };
+                });
                 setVariants(mapped);
             }
 
@@ -1692,14 +2079,188 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
                 price: "",
                 mrp: "",
                 productSpecification: "",
+                productHandling: "0",
+                productHandlingCharges: "0",
+                customerSellingPrice: "0",
+                finalSellingPrice: 0,
+                additionalHandling: undefined,
                 images: [],
                 attributes: {},
             },
         ]);
     };
 
-    const updateVariant = (id: string, field: keyof Variant, value: any) =>
-        setVariants((prev) => prev.map((v) => (v.id === id ? { ...v, [field]: value } : v)));
+    const lastCalculatedRef = useRef<Record<string, CalculationCacheEntry>>({});
+    const previousCategoryRef = useRef<string | null>(null);
+
+    const handleCalculateHandling = async (variantId: string) => {
+        const found = variants.find((v) => v.id === variantId);
+        if (!found) return;
+
+        const price = found.price?.trim();
+        const mrp = found.mrp?.trim();
+        const categoryId = form.categoryId;
+
+        const priceNum = parseFloat(price || "0");
+        const mrpNum = parseFloat(mrp || "0");
+
+        if (!categoryId) {
+            return;
+        }
+
+        if (!price || priceNum <= 0 || !mrp || mrpNum <= 0) {
+            delete lastCalculatedRef.current[variantId];
+            setVariants((prev) =>
+                prev.map((v) => (v.id === variantId ? clearCalculatedPricing(v) : v))
+            );
+            return;
+        }
+
+        const priceError = getPriceOverMrpError(priceNum, mrpNum);
+        if (priceError) {
+            delete lastCalculatedRef.current[variantId];
+            setVariants((prev) =>
+                prev.map((v) =>
+                    v.id === variantId ? clearCalculatedPricing(v, priceError) : v
+                )
+            );
+            return;
+        }
+
+        const last = lastCalculatedRef.current[variantId];
+        if (last && last.price === price && last.mrp === mrp && last.categoryId === categoryId) {
+            return;
+        }
+
+        try {
+            const res: any = await postRequest(API_ENDPOINTS.CALCULATEPRODUCTHANDLING, {
+                price: priceNum,
+                mrp: mrpNum,
+                sellingPrice: priceNum,
+                categoryId,
+            });
+
+            if (res?.success && res.data) {
+                const productHandling = res.data.productHandling ?? res.data.productHandlingCharges ?? 0;
+                const customerSellingPrice = res.data.customerSellingPrice ?? res.data.finalSellingPrice ?? 0;
+                const additionalHandling = res.data.additionalHandling;
+                const customerPriceError = getCustomerPriceOverMrpError(customerSellingPrice, mrpNum);
+
+                setVariants((prev) =>
+                    prev.map((v) =>
+                        v.id === variantId
+                            ? {
+                                  ...v,
+                                  productHandling: String(productHandling),
+                                  productHandlingCharges: String(productHandling),
+                                  customerSellingPrice: String(customerSellingPrice),
+                                  finalSellingPrice: Number(customerSellingPrice),
+                                  additionalHandling,
+                                  pricingError: customerPriceError,
+                              }
+                            : v
+                    )
+                );
+
+                lastCalculatedRef.current[variantId] = { price, mrp, categoryId };
+            }
+        } catch (error) {
+            console.error("Failed to calculate handling charges:", error);
+        }
+    };
+
+    useEffect(() => {
+        const previousCategoryId = previousCategoryRef.current;
+        const nextCategoryId = form.categoryId;
+
+        if (initialLoading) {
+            previousCategoryRef.current = nextCategoryId;
+            return;
+        }
+
+        if (previousCategoryId === null) {
+            previousCategoryRef.current = nextCategoryId;
+            return;
+        }
+
+        if (previousCategoryId === nextCategoryId) return;
+
+        previousCategoryRef.current = nextCategoryId;
+        lastCalculatedRef.current = {};
+
+        setVariants((prev) =>
+            prev.map((variant) => {
+                const priceNum = parseFloat(variant.price || "0");
+                const mrpNum = parseFloat(variant.mrp || "0");
+
+                if (priceNum > 0 && mrpNum > 0) {
+                    return {
+                        ...variant,
+                        productHandling: "",
+                        productHandlingCharges: "",
+                        customerSellingPrice: "",
+                        finalSellingPrice: 0,
+                        additionalHandling: undefined,
+                        pricingError: getPriceOverMrpError(priceNum, mrpNum),
+                    };
+                }
+
+                return variant;
+            })
+        );
+
+        if (!nextCategoryId) return;
+
+        variants.forEach((variant) => {
+            const priceNum = parseFloat(variant.price || "0");
+            const mrpNum = parseFloat(variant.mrp || "0");
+
+            if (priceNum > 0 && mrpNum > 0) {
+                handleCalculateHandling(variant.id);
+            }
+        });
+    }, [form.categoryId, initialLoading]);
+
+    const pricingInputSignature = useMemo(
+        () => variants.map((variant) => `${variant.id}:${variant.price}:${variant.mrp}`).join("|"),
+        [variants]
+    );
+
+    useEffect(() => {
+        if (initialLoading || !form.categoryId) return;
+
+        const timer = setTimeout(() => {
+            variants.forEach((variant) => {
+                const priceNum = parseFloat(variant.price || "0");
+                const mrpNum = parseFloat(variant.mrp || "0");
+
+                if (priceNum > 0 && mrpNum > 0 && priceNum <= mrpNum) {
+                    handleCalculateHandling(variant.id);
+                }
+            });
+        }, 500);
+
+        return () => clearTimeout(timer);
+    }, [pricingInputSignature, form.categoryId, initialLoading]);
+
+    const updateVariant = (id: string, field: keyof Variant, value: any) => {
+        if (field === "price" || field === "mrp") {
+            delete lastCalculatedRef.current[id];
+        }
+
+        setVariants((prev) =>
+            prev.map((v) => {
+                if (v.id !== id) return v;
+
+                const next = { ...v, [field]: value };
+                if (field === "price" || field === "mrp") {
+                    return clearCalculatedPricing(next, getPriceOverMrpError(next.price, next.mrp));
+                }
+
+                return next;
+            })
+        );
+    };
 
     const removeVariant = (id: string) =>
         setVariants((prev) => prev.filter((v) => v.id !== id));
@@ -1826,7 +2387,7 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
 
     const isStep3Valid =
         variants.length > 0 &&
-        variants.every((v) => v.price.trim() && v.stock.trim());
+        variants.every((v) => isVariantPricingReady(v));
 
     const isStep4Valid = true; // GST is optional
 
@@ -1856,6 +2417,15 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
     // ── Submit (PATCH) ─────────────────────────────────────────────────────────
     // ── Submit (PATCH) - FIXED VARIANT IMAGE UPLOAD ──────────────────────────────
     const handleSubmit = async () => {
+        if (!isStep3Valid) {
+            Toast.show({
+                type: "error",
+                text1: "Invalid Pricing",
+                text2: "Please fix variant pricing before updating.",
+            });
+            return;
+        }
+
         if (!isStep5Valid) {
             Toast.show({
                 type: "error",
@@ -1951,9 +2521,12 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
                     unitValue: parseInt(v.unitValue || "1"),
                     stock: parseInt(v.stock || "0"),
                     sku: v.sku,
-                    price: parseFloat(v.price),
-                    productSpecification: v.productSpecification?.trim() || "",
+                    price: parseFloat(v.price || "0"),
                     mrp: parseFloat(v.mrp || "0"),
+                    productHandling: parseFloat(v.productHandling || v.productHandlingCharges || "0"),
+                    productHandlingCharges: parseFloat(v.productHandlingCharges || v.productHandling || "0"),
+                    customerSellingPrice: parseFloat(v.customerSellingPrice || v.price || "0"),
+                    productSpecification: v.productSpecification?.trim() || "",
                     images: (v.images || [])
                         .filter((img) => img.isExisting)        // ← ADD THIS
                         .map((img) => ({
@@ -2246,6 +2819,15 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
                     loading={ddLoading}
                 />
 
+                {showAdditionalHandlingInfo && (
+                    <View style={sharedStyles.infoBox}>
+                        <Ionicons name="information-circle-outline" size={16} color={colors.primary} />
+                        <Text style={[sharedStyles.infoText, { color: colors.primary }]}>
+                            Additional category handling applies: {selectedAdditionalHandling?.percentage}% additional handling, maximum ₹{selectedAdditionalHandling?.maxAmount}
+                        </Text>
+                    </View>
+                )}
+
                 {form.categoryId ? (
                     <DropdownPicker
                         label="Product Category *"
@@ -2364,6 +2946,7 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
                             onRemove={removeVariant}
                             onPickImages={pickVariantImages}
                             onRemoveImage={handleRemoveVariantImage}
+                            onBlurPricing={handleCalculateHandling}
                         />
                     ))
                 )}

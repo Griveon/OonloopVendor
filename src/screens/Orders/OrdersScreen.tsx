@@ -1,5 +1,6 @@
 import React, {
     useState,
+    useEffect,
     useCallback,
     useMemo,
     useRef,
@@ -7,6 +8,7 @@ import React, {
 import {
     View,
     Text,
+    DeviceEventEmitter,
     FlatList,
     TouchableOpacity,
     ActivityIndicator,
@@ -127,10 +129,16 @@ interface OrdersScreenProps {
         params?: {
             status?: string;
             sellerStatus?: string;
+            vendorOrderId?: string;
+            orderId?: string;
+            notificationRefreshKey?: string | number;
         };
     };
     navigation?: any;
 }
+
+const VENDOR_ORDER_NOTIFICATION_EVENT =
+    "vendor-order-notification";
 
 // ─── Seller Flow ─────────────────────────────────────────────────────
 
@@ -1341,6 +1349,27 @@ const getOrderIdForApi = (order: Order | null) => {
     );
 };
 
+const getParentOrderId = (order: Order | null) => {
+    if (!order) return "";
+
+    if (typeof order.parentOrder === "string") {
+        return order.parentOrder;
+    }
+
+    return order.parentOrder?._id || "";
+};
+
+const orderMatchesNotificationTarget = (order: Order, targetId: string) => {
+    if (!targetId) return false;
+
+    return (
+        getOrderIdForApi(order) === targetId ||
+        getParentOrderId(order) === targetId ||
+        order.orderNumber === targetId ||
+        order.vendorOrderNumber === targetId
+    );
+};
+
 const extractPickupOtpPayload = (json: any) => {
     const data = json?.data || {};
 
@@ -1390,6 +1419,7 @@ const OrdersScreen = ({ route, navigation }: OrdersScreenProps) => {
 
     const fetchingRef = useRef(false);
     const statusFilterRef = useRef(initialStatus);
+    const openedNotificationOrderRef = useRef("");
 
     /**
      * Ref locks prevent duplicate API calls from fast double taps.
@@ -1505,8 +1535,61 @@ const OrdersScreen = ({ route, navigation }: OrdersScreenProps) => {
             fetchOrders(1, false, nextStatus);
 
             return () => { };
-        }, [route?.params?.status, route?.params?.sellerStatus, fetchOrders])
+        }, [
+            route?.params?.status,
+            route?.params?.sellerStatus,
+            route?.params?.notificationRefreshKey,
+            fetchOrders,
+        ])
     );
+
+    useEffect(() => {
+        const subscription = DeviceEventEmitter.addListener(
+            VENDOR_ORDER_NOTIFICATION_EVENT,
+            () => {
+                fetchOrders(1, true, statusFilterRef.current);
+            }
+        );
+
+        return () => {
+            subscription.remove();
+        };
+    }, [fetchOrders]);
+
+    const notificationTargetOrderId = String(
+        route?.params?.vendorOrderId ||
+        route?.params?.orderId ||
+        ""
+    ).trim();
+
+    useEffect(() => {
+        openedNotificationOrderRef.current = "";
+    }, [
+        notificationTargetOrderId,
+        route?.params?.notificationRefreshKey,
+    ]);
+
+    useEffect(() => {
+        if (!notificationTargetOrderId) return;
+
+        const matchingOrder = orders.find((order) =>
+            orderMatchesNotificationTarget(order, notificationTargetOrderId)
+        );
+
+        if (!matchingOrder) return;
+
+        const matchedOrderId = getOrderIdForApi(matchingOrder);
+
+        if (openedNotificationOrderRef.current === matchedOrderId) {
+            return;
+        }
+
+        openedNotificationOrderRef.current = matchedOrderId;
+        setDetailSheet({
+            visible: true,
+            order: matchingOrder,
+        });
+    }, [orders, notificationTargetOrderId]);
 
     const handleShowPickupOtp = useCallback(async (order: Order) => {
         if (pickupOtpFetchingRef.current) {

@@ -80,7 +80,7 @@ interface CatalogProduct {
     brand?: Brand;
     isMainCatalogProduct: boolean;
     productCategory: string;
-    category: string;
+    category: string | { _id?: string;[key: string]: any };
     vendorId: string;
     stock: number;
     mrp: number;
@@ -118,6 +118,11 @@ interface VariantPricingState {
     mrp: string;
     price: string;
     stock: string;
+    productHandling?: string;
+    productHandlingCharges?: string;
+    customerSellingPrice?: string;
+    additionalHandling?: any;
+    pricingError?: string;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -135,16 +140,63 @@ const buildVariantLabel = (variant: ProductVariant, index: number): string => {
     return parts.length > 0 ? parts.join(" · ") : `Variant ${index + 1}`;
 };
 
+const toFiniteNumber = (value: any): number | null => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+const getPriceOverMrpError = (price: any, mrp: any): string | undefined => {
+    const priceNum = toFiniteNumber(price);
+    const mrpNum = toFiniteNumber(mrp);
+
+    if (priceNum != null && mrpNum != null && priceNum > 0 && mrpNum > 0 && priceNum > mrpNum) {
+        return "Price cannot exceed MRP.";
+    }
+
+    return undefined;
+};
+
+const getCustomerPriceOverMrpError = (customerSellingPrice: any, mrp: any): string | undefined => {
+    const customerSellingPriceNum = toFiniteNumber(customerSellingPrice);
+    const mrpNum = toFiniteNumber(mrp);
+
+    if (
+        customerSellingPriceNum != null &&
+        mrpNum != null &&
+        customerSellingPriceNum > mrpNum
+    ) {
+        return "Calculated customer price exceeds MRP. Please try again.";
+    }
+
+    return undefined;
+};
+
 const allVariantsValid = (variants: VariantPricingState[]): boolean =>
     variants.length > 0 &&
     variants.every(
-        (v) =>
-            v.mrp.trim() !== "" &&
-            v.price.trim() !== "" &&
-            v.stock.trim() !== "" &&
-            parseFloat(v.price) > 0 &&
-            parseInt(v.stock) >= 0
+        (v) => {
+            const mrpNum = toFiniteNumber(v.mrp);
+            const priceNum = toFiniteNumber(v.price);
+            const stockNum = toFiniteNumber(v.stock);
+
+            return (
+                v.mrp.trim() !== "" &&
+                v.price.trim() !== "" &&
+                v.stock.trim() !== "" &&
+                mrpNum != null &&
+                mrpNum > 0 &&
+                priceNum != null &&
+                priceNum > 0 &&
+                stockNum != null &&
+                stockNum >= 0 &&
+                priceNum <= mrpNum &&
+                !v.pricingError
+            );
+        }
     );
+
+const getCategoryId = (category: CatalogProduct["category"]): string =>
+    typeof category === "string" ? category : category?._id ?? "";
 
 // ─── ModeTabs ──────────────────────────────────────────────────────────────────
 
@@ -241,6 +293,8 @@ const VariantPricingRow: React.FC<{
 }> = ({ variant, onChange }) => {
     const mrpNum = parseFloat(variant.mrp) || 0;
     const priceNum = parseFloat(variant.price) || 0;
+    const priceError = getPriceOverMrpError(variant.price, variant.mrp);
+    const pricingError = variant.pricingError || priceError;
     const marginPct =
         mrpNum > 0 && priceNum > 0
             ? Math.max(0, Math.round(((mrpNum - priceNum) / mrpNum) * 100))
@@ -272,8 +326,7 @@ const VariantPricingRow: React.FC<{
                             style={[
                                 styles.variantFieldInput,
                                 field === "price" &&
-                                priceNum > mrpNum &&
-                                mrpNum > 0 && { borderColor: colors.error },
+                                !!pricingError && { borderColor: colors.error },
                             ]}
                             value={variant[field]}
                             onChangeText={(v) => onChange(field, v)}
@@ -285,6 +338,11 @@ const VariantPricingRow: React.FC<{
                     </View>
                 ))}
             </View>
+            {!!pricingError && (
+                <Text style={styles.variantPricingErrorText}>
+                    {pricingError}
+                </Text>
+            )}
         </View>
     );
 };
@@ -299,7 +357,7 @@ const PricingModal: React.FC<{
     onConfirm: (
         product: CatalogProduct,
         pricings: VariantPricingState[]
-    ) => void;
+    ) => Promise<Record<string, string> | undefined>;
 }> = ({ visible, product, submitting, onClose, onConfirm }) => {
     const insets = useSafeAreaInsets();
     const [variantPricings, setVariantPricings] = useState<VariantPricingState[]>([]);
@@ -326,8 +384,37 @@ const PricingModal: React.FC<{
         value: string
     ) =>
         setVariantPricings((prev) =>
-            prev.map((vp, i) => (i === index ? { ...vp, [field]: value } : vp))
+            prev.map((vp, i) => {
+                if (i !== index) return vp;
+
+                const next = {
+                    ...vp,
+                    [field]: value,
+                    pricingError: undefined,
+                };
+
+                if (field === "price" || field === "mrp") {
+                    next.productHandling = undefined;
+                    next.productHandlingCharges = undefined;
+                    next.customerSellingPrice = undefined;
+                    next.additionalHandling = undefined;
+                }
+
+                return next;
+            })
         );
+
+    const handleConfirmPress = async () => {
+        const errors = await onConfirm(product, variantPricings);
+        if (!errors || Object.keys(errors).length === 0) return;
+
+        setVariantPricings((prev) =>
+            prev.map((vp) => ({
+                ...vp,
+                pricingError: errors[vp.variantId] || vp.pricingError,
+            }))
+        );
+    };
 
     const valid = allVariantsValid(variantPricings) && !submitting;
     const imageUri = getPrimaryImage(product.images);
@@ -419,7 +506,7 @@ const PricingModal: React.FC<{
                     <View style={styles.modalFooter}>
                         <TouchableOpacity
                             style={[styles.confirmBtn, !valid && styles.confirmBtnDisabled]}
-                            onPress={() => valid && onConfirm(product, variantPricings)}
+                            onPress={() => valid && handleConfirmPress()}
                             activeOpacity={0.85}
                             disabled={!valid}
                         >
@@ -532,7 +619,7 @@ const SearchAddMode: React.FC = () => {
     const handleConfirm = async (
         product: CatalogProduct,
         variantPricings: VariantPricingState[]
-    ) => {
+    ): Promise<Record<string, string> | undefined> => {
         setSubmitting(true);
 
         try {
@@ -545,6 +632,62 @@ const SearchAddMode: React.FC = () => {
             }
 
             const gstPct = parseFloat(product.gst.gstPercent?.toString() ?? "0");
+            const categoryId = getCategoryId(product.category);
+
+            if (!categoryId) {
+                Alert.alert("Error", "Product category not found. Please try another product.");
+                return;
+            }
+
+            const pricingErrors: Record<string, string> = {};
+            const calculatedPricings = await Promise.all(
+                variantPricings.map(async (pricing) => {
+                    const priceNum = toFiniteNumber(pricing.price);
+                    const mrpNum = toFiniteNumber(pricing.mrp);
+                    const priceError = getPriceOverMrpError(priceNum, mrpNum);
+
+                    if (priceError || priceNum == null || priceNum <= 0 || mrpNum == null || mrpNum <= 0) {
+                        pricingErrors[pricing.variantId] = priceError || "Enter valid price and MRP.";
+                        return pricing;
+                    }
+
+                    const handlingRes: any = await postRequest(API_ENDPOINTS.CALCULATEPRODUCTHANDLING, {
+                        price: priceNum,
+                        mrp: mrpNum,
+                        sellingPrice: priceNum,
+                        categoryId,
+                    });
+
+                    if (!handlingRes?.success || !handlingRes.data) {
+                        pricingErrors[pricing.variantId] =
+                            handlingRes?.message || "Could not calculate pricing.";
+                        return pricing;
+                    }
+
+                    const productHandling =
+                        handlingRes.data.productHandling ?? handlingRes.data.productHandlingCharges ?? 0;
+                    const customerSellingPrice =
+                        handlingRes.data.customerSellingPrice ?? handlingRes.data.finalSellingPrice ?? 0;
+                    const customerPriceError = getCustomerPriceOverMrpError(customerSellingPrice, mrpNum);
+
+                    if (customerPriceError) {
+                        pricingErrors[pricing.variantId] = customerPriceError;
+                    }
+
+                    return {
+                        ...pricing,
+                        productHandling: String(productHandling),
+                        productHandlingCharges: String(productHandling),
+                        customerSellingPrice: String(customerSellingPrice),
+                        additionalHandling: handlingRes.data.additionalHandling,
+                        pricingError: customerPriceError,
+                    };
+                })
+            );
+
+            if (Object.keys(pricingErrors).length > 0) {
+                return pricingErrors;
+            }
 
             // =========================================================
             // 1️⃣ BUILD FINAL PAYLOAD ONLY (NO POST UPLOAD AFTER)
@@ -553,12 +696,12 @@ const SearchAddMode: React.FC = () => {
             const payload = {
                 vendorId: userId,
                 productCategory: product.productCategory,
-                category: product.category,
+                category: categoryId,
                 name: product.name,
                 description: product.description,
                 slug: `${product.slug}-${Date.now()}`,
 
-                stock: variantPricings.reduce(
+                stock: calculatedPricings.reduce(
                     (s, v) => s + Number(v.stock || 0),
                     0
                 ),
@@ -587,7 +730,7 @@ const SearchAddMode: React.FC = () => {
                     })),
 
                 variants: product.variants.map((v, i) => {
-                    const pricing = variantPricings[i];
+                    const pricing = calculatedPricings[i];
 
                     const priceNum = Number(pricing.price || 0);
                     const mrpNum = Number(pricing.mrp || 0);
@@ -605,6 +748,10 @@ const SearchAddMode: React.FC = () => {
                             product.gst.gstRuleId && gstPct > 0
                                 ? priceNum + (priceNum * gstPct) / 100
                                 : mrpNum,
+                        productHandling: Number(pricing.productHandling || pricing.productHandlingCharges || 0),
+                        productHandlingCharges: Number(pricing.productHandlingCharges || pricing.productHandling || 0),
+                        customerSellingPrice: Number(pricing.customerSellingPrice || priceNum),
+                        additionalHandling: pricing.additionalHandling,
 
                         images: (v.images || [])
                             .filter((img: any) => img.url)
@@ -637,8 +784,10 @@ const SearchAddMode: React.FC = () => {
             closeModal();
 
             Alert.alert("Success 🎉", `${product.name} added successfully`);
+            return undefined;
         } catch (err: any) {
             Alert.alert("Error", err?.message || "Something went wrong");
+            return undefined;
         } finally {
             setSubmitting(false);
         }
@@ -1219,6 +1368,12 @@ const styles = StyleSheet.create({
         color: colors.secondary,
         textAlign: "center",
         fontFamily: "Roboto",
+    },
+    variantPricingErrorText: {
+        color: colors.error,
+        fontSize: 12,
+        fontWeight: "600",
+        marginTop: 8,
     },
 
     // Add New Product

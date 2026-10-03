@@ -1,25 +1,30 @@
 import {
     AppState,
     AppStateStatus,
+    DeviceEventEmitter,
     PermissionsAndroid,
     Platform,
 } from 'react-native';
-import { Alert } from 'react-native';
 import messaging, {
     FirebaseMessagingTypes,
 } from '@react-native-firebase/messaging';
 
 import notifee, {
     AndroidImportance,
-    AndroidStyle,
     AndroidVisibility,
     AuthorizationStatus,
+    EventType,
 } from '@notifee/react-native';
 
 import DeviceInfo from 'react-native-device-info';
-import { getUserData } from '../../components/AsyncStorage/AsyncStorage';
+import {
+    getLocalPreferences,
+    getUserData,
+} from '../../components/AsyncStorage/AsyncStorage';
 import { postRequest } from '../../constants/ApiClient';
 import { API_ENDPOINTS } from '../../constants/ApiEndpoints';
+import { USER_PREFERENCES } from '../../constants/userpreferences';
+import { navigate } from '../../components/utils/NavigationService';
 
 
 /* =====================================================
@@ -32,11 +37,26 @@ export const DEFAULT_NOTIFICATION_CHANNEL_ID =
 export const ORDER_NOTIFICATION_CHANNEL_ID =
     'new_paid_orders_v1';
 
+export const ORDER_NOTIFICATION_SILENT_CHANNEL_ID =
+    'new_paid_orders_silent_v1';
+
 export const ORDER_NOTIFICATION_SOUND =
     'order_alert';
 
 export const DRIVER_NEW_PAID_ORDER_TYPE =
     'DRIVER_NEW_PAID_ORDER';
+
+export const VENDOR_NEW_ORDER_TYPE =
+    'NEW_VENDOR_ORDER';
+
+export const PAYMENT_SUCCESS_EVENT =
+    'PAYMENT_SUCCESS';
+
+export const VENDOR_ORDER_DETAILS_SCREEN =
+    'VENDOR_ORDER_DETAILS';
+
+export const VENDOR_ORDER_NOTIFICATION_EVENT =
+    'vendor-order-notification';
 
 /*
  * IMPORTANT:
@@ -79,6 +99,11 @@ let appStateSubscription:
     >
     | null = null;
 
+const handledNotificationIds = new Map<string, number>();
+
+const NOTIFICATION_DEDUPE_WINDOW_MS =
+    10000;
+
 /* =====================================================
    Helpers
 ===================================================== */
@@ -100,6 +125,15 @@ const getNotificationType = (
 ): string => {
     return String(
         remoteMessage?.data?.type || '',
+    ).trim();
+};
+
+const getNotificationEvent = (
+    remoteMessage:
+        FirebaseMessagingTypes.RemoteMessage,
+): string => {
+    return String(
+        remoteMessage?.data?.event || '',
     ).trim();
 };
 
@@ -148,6 +182,211 @@ const isDriverOrderNotification = (
     );
 };
 
+const isVendorOrderNotification = (
+    remoteMessage:
+        FirebaseMessagingTypes.RemoteMessage,
+): boolean => {
+    const data = remoteMessage?.data || {};
+    const type = getNotificationType(remoteMessage);
+    const event = getNotificationEvent(remoteMessage);
+    const screen = String(data?.screen || '').trim();
+
+    return (
+        type === VENDOR_NEW_ORDER_TYPE ||
+        (
+            event === PAYMENT_SUCCESS_EVENT &&
+            Boolean(data?.vendorOrderId)
+        ) ||
+        (
+            screen === VENDOR_ORDER_DETAILS_SCREEN &&
+            Boolean(data?.vendorOrderId)
+        )
+    );
+};
+
+const isOrderNotification = (
+    remoteMessage:
+        FirebaseMessagingTypes.RemoteMessage,
+): boolean => {
+    return (
+        isDriverOrderNotification(remoteMessage) ||
+        isVendorOrderNotification(remoteMessage)
+    );
+};
+
+const getVendorOrderIdFromData = (
+    data?: FirebaseMessagingTypes.RemoteMessage['data'],
+): string => {
+    return String(
+        data?.vendorOrderId ||
+        data?.vendorOrder ||
+        data?.vendorOrder_id ||
+        '',
+    ).trim();
+};
+
+const getParentOrderIdFromData = (
+    data?: FirebaseMessagingTypes.RemoteMessage['data'],
+): string => {
+    return String(
+        data?.orderId ||
+        data?.parentOrderId ||
+        data?.parentOrder ||
+        '',
+    ).trim();
+};
+
+const getMessageDedupeId = (
+    remoteMessage:
+        FirebaseMessagingTypes.RemoteMessage,
+): string => {
+    const data = remoteMessage?.data || {};
+
+    return String(
+        remoteMessage?.messageId ||
+        data?.notificationId ||
+        data?.vendorOrderId ||
+        data?.orderId ||
+        `${getNotificationType(remoteMessage)}-${getNotificationEvent(remoteMessage)}`,
+    );
+};
+
+const wasRecentlyHandled = (
+    remoteMessage:
+        FirebaseMessagingTypes.RemoteMessage,
+): boolean => {
+    const now = Date.now();
+    const dedupeId = getMessageDedupeId(remoteMessage);
+
+    handledNotificationIds.forEach((timestamp, id) => {
+        if (now - timestamp > NOTIFICATION_DEDUPE_WINDOW_MS) {
+            handledNotificationIds.delete(id);
+        }
+    });
+
+    const previousTimestamp = handledNotificationIds.get(dedupeId);
+
+    if (
+        previousTimestamp &&
+        now - previousTimestamp <= NOTIFICATION_DEDUPE_WINDOW_MS
+    ) {
+        return true;
+    }
+
+    handledNotificationIds.set(dedupeId, now);
+    return false;
+};
+
+const emitVendorOrderRefresh = (
+    remoteMessage:
+        FirebaseMessagingTypes.RemoteMessage,
+): void => {
+    if (!isVendorOrderNotification(remoteMessage)) return;
+
+    DeviceEventEmitter.emit(
+        VENDOR_ORDER_NOTIFICATION_EVENT,
+        {
+            vendorOrderId:
+                getVendorOrderIdFromData(remoteMessage.data),
+            orderId:
+                getParentOrderIdFromData(remoteMessage.data),
+            receivedAt:
+                Date.now(),
+        },
+    );
+};
+
+const navigateToVendorOrder = (
+    data?: FirebaseMessagingTypes.RemoteMessage['data'],
+): void => {
+    const vendorOrderId = getVendorOrderIdFromData(data);
+    const orderId = getParentOrderIdFromData(data);
+
+    if (!vendorOrderId && !orderId) {
+        return;
+    }
+
+    navigate(
+        'Orders',
+        {
+            status: 'placed',
+            vendorOrderId,
+            orderId,
+            notificationRefreshKey: Date.now(),
+        },
+    );
+};
+
+const handleNotificationOpen = (
+    remoteMessage:
+        FirebaseMessagingTypes.RemoteMessage | null,
+): void => {
+    try {
+        if (!remoteMessage || !isVendorOrderNotification(remoteMessage)) {
+            return;
+        }
+
+        navigateToVendorOrder(remoteMessage.data);
+    } catch (error) {
+        console.warn(
+            '[OrderNotification] Open handling failed:',
+            error,
+        );
+    }
+};
+
+const normalizeBooleanPreference = (
+    value: unknown,
+    fallback: boolean,
+): boolean => {
+    if (typeof value === 'boolean') {
+        return value;
+    }
+
+    if (typeof value === 'string') {
+        const normalizedValue =
+            value
+                .trim()
+                .toLowerCase();
+
+        if (normalizedValue === 'true') {
+            return true;
+        }
+
+        if (normalizedValue === 'false') {
+            return false;
+        }
+    }
+
+    return fallback;
+};
+
+const isVendorOrderNotificationSoundEnabled =
+    async (): Promise<boolean> => {
+        try {
+            const preference =
+                USER_PREFERENCES
+                    .VENDOR_ORDER_NOTIFICATIONS;
+
+            const localPreferences =
+                await getLocalPreferences();
+
+            return normalizeBooleanPreference(
+                localPreferences?.[preference.key],
+                preference.default,
+            );
+        } catch (error) {
+            console.warn(
+                '[OrderNotification] Preference read failed:',
+                error,
+            );
+
+            return USER_PREFERENCES
+                .VENDOR_ORDER_NOTIFICATIONS
+                .default;
+        }
+    };
+
 const getNotificationChannelId = (
     remoteMessage:
         FirebaseMessagingTypes.RemoteMessage,
@@ -165,7 +404,7 @@ const getNotificationChannelId = (
     }
 
     if (
-        isDriverOrderNotification(
+        isOrderNotification(
             remoteMessage,
         )
     ) {
@@ -180,10 +419,14 @@ const getNotificationChannelId = (
 };
 const getNotificationSound = (
     remoteMessage: FirebaseMessagingTypes.RemoteMessage,
-): string => {
-    if (isDriverOrderNotification(remoteMessage)) {
-        return ORDER_NOTIFICATION_SOUND; // 'order_alert'
+    orderSoundEnabled = true,
+): string | undefined => {
+    if (isOrderNotification(remoteMessage)) {
+        return orderSoundEnabled
+            ? ORDER_NOTIFICATION_SOUND
+            : undefined;
     }
+
     return 'default';
 };
 /* =====================================================
@@ -368,11 +611,42 @@ export const createNotificationChannels =
                             true,
                     });
 
+            const silentOrderChannelId =
+                await notifee
+                    .createChannel({
+                        id:
+                            ORDER_NOTIFICATION_SILENT_CHANNEL_ID,
+
+                        name:
+                            'New Paid Orders Silent',
+
+                        description:
+                            'Silent alerts for new paid delivery orders',
+
+                        importance:
+                            AndroidImportance
+                                .HIGH,
+
+                        visibility:
+                            AndroidVisibility
+                                .PUBLIC,
+
+                        vibration:
+                            false,
+
+                        lights:
+                            true,
+
+                        badge:
+                            true,
+                    });
+
             console.log(
                 '[NOTIFICATION] Channels created:',
                 {
                     defaultChannelId,
                     orderChannelId,
+                    silentOrderChannelId,
                 },
             );
         } catch (error) {
@@ -640,6 +914,13 @@ export const displayLocalNotification = async (
     remoteMessage: FirebaseMessagingTypes.RemoteMessage,
 ): Promise<void> => {
     try {
+        if (
+            isOrderNotification(remoteMessage) &&
+            wasRecentlyHandled(remoteMessage)
+        ) {
+            return;
+        }
+
         await createNotificationChannels();
 
         const type = getNotificationType(remoteMessage);
@@ -647,9 +928,23 @@ export const displayLocalNotification = async (
         const body = getNotificationBody(remoteMessage);
 
         const channelId = getNotificationChannelId(remoteMessage);
-        const sound = getNotificationSound(remoteMessage);
-
-        const isOrder = isDriverOrderNotification(remoteMessage);
+        const isOrder = isOrderNotification(remoteMessage);
+        const orderSoundEnabled =
+            isOrder
+                ? await isVendorOrderNotificationSoundEnabled()
+                : true;
+        const sound = getNotificationSound(
+            remoteMessage,
+            orderSoundEnabled,
+        );
+        const androidChannelId =
+            isOrder
+                ? (
+                    orderSoundEnabled
+                        ? ORDER_NOTIFICATION_CHANNEL_ID
+                        : ORDER_NOTIFICATION_SILENT_CHANNEL_ID
+                )
+                : channelId;
 
         await notifee.displayNotification({
             id:
@@ -662,14 +957,12 @@ export const displayLocalNotification = async (
             data: {
                 ...remoteMessage.data,
                 type,
-                channelId,
-                sound,
+                channelId: androidChannelId,
+                ...(sound ? { sound } : {}),
             },
 
             android: {
-                channelId: isOrder
-                    ? 'new_paid_orders_v1'
-                    : channelId,
+                channelId: androidChannelId,
 
                 importance: AndroidImportance.HIGH,
                 visibility: AndroidVisibility.PUBLIC,
@@ -681,7 +974,7 @@ export const displayLocalNotification = async (
 
                 smallIcon: 'ic_launcher',
 
-                sound: sound,
+                ...(sound ? { sound } : {}),
 
                 autoCancel: true,
                 showTimestamp: true,
@@ -689,9 +982,13 @@ export const displayLocalNotification = async (
             },
 
             ios: {
-                sound: isOrder
-                    ? 'order_alert.mp3'
-                    : 'default',
+                ...(sound
+                    ? {
+                        sound: isOrder
+                            ? 'order_alert.mp3'
+                            : sound,
+                    }
+                    : {}),
             },
         });
     } catch (error) {
@@ -717,6 +1014,10 @@ export const listenForegroundNotifications =
                     );
 
                     await displayLocalNotification(
+                        remoteMessage,
+                    );
+
+                    emitVendorOrderRefresh(
                         remoteMessage,
                     );
                 },
@@ -869,6 +1170,10 @@ export const initializeNotifications =
                                 remoteMessage
                                     ?.data,
                             );
+
+                            handleNotificationOpen(
+                                remoteMessage,
+                            );
                         },
                     );
 
@@ -884,7 +1189,50 @@ export const initializeNotifications =
                     initialNotification
                         ?.data,
                 );
+
+                    handleNotificationOpen(
+                        initialNotification,
+                    );
             }
+
+            const initialNotifeeNotification =
+                await notifee
+                    .getInitialNotification();
+
+            if (
+                initialNotifeeNotification
+                    ?.notification
+                    ?.data
+            ) {
+                handleNotificationOpen({
+                    data:
+                        initialNotifeeNotification
+                            .notification
+                            .data,
+                } as FirebaseMessagingTypes.RemoteMessage);
+            }
+
+            const unsubscribeNotifeeForeground =
+                notifee
+                    .onForegroundEvent(
+                        ({ type, detail }) => {
+                            if (
+                                type !== EventType.PRESS ||
+                                !detail
+                                    ?.notification
+                                    ?.data
+                            ) {
+                                return;
+                            }
+
+                            handleNotificationOpen({
+                                data:
+                                    detail
+                                        .notification
+                                        .data,
+                            } as FirebaseMessagingTypes.RemoteMessage);
+                        },
+                    );
 
             listenForAppActiveTokenSync();
 
@@ -903,6 +1251,8 @@ export const initializeNotifications =
                     unsubscribeForeground();
 
                     unsubscribeOpenedApp();
+
+                    unsubscribeNotifeeForeground();
 
                     appStateSubscription
                         ?.remove();
@@ -976,3 +1326,23 @@ export const registerCurrentDeviceForNotifications =
             return false;
         }
     };
+
+notifee.onBackgroundEvent(
+    async ({ type, detail }) => {
+        if (
+            type !== EventType.PRESS ||
+            !detail
+                ?.notification
+                ?.data
+        ) {
+            return;
+        }
+
+        handleNotificationOpen({
+            data:
+                detail
+                    .notification
+                    .data,
+        } as FirebaseMessagingTypes.RemoteMessage);
+    },
+);

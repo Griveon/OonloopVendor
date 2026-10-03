@@ -60,5 +60,5 @@ export const API_ENDPOINTS = {
     FIREBASE_TOKEN_SAVE: "/firebasetokens/save",
     USERPREFERENCE_SET: "/userpreference/set",
     USERPREFERENCE_GET: "/userpreference/get",
-
+    CALCULATEPRODUCTHANDLING: "/product/calculatehandling",
 }

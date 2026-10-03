@@ -620,6 +620,18 @@ const deleteStoreImageApi = async (imageUrl: string) => {
     return res;
 };
 
+const normalizeBooleanPreference = (value: unknown, fallback: boolean): boolean => {
+    if (typeof value === "boolean") return value;
+
+    if (typeof value === "string") {
+        const normalizedValue = value.trim().toLowerCase();
+        if (normalizedValue === "true") return true;
+        if (normalizedValue === "false") return false;
+    }
+
+    return fallback;
+};
+
 const fetchStoreImagesApi = async () => {
     // GET /vendor/store-images
     const res: any = await getRequest(API_ENDPOINTS.STOREIMAGESGET, undefined, undefined, false);
@@ -650,7 +662,7 @@ const UserPreferencesCard = () => {
         // 1. Check local storage first
         const localPrefs = await getLocalPreferences();
         if (localPrefs && prefKey in localPrefs) {
-            setOrderNotifications(Boolean(localPrefs[prefKey]));
+            setOrderNotifications(normalizeBooleanPreference(localPrefs[prefKey], defaultVal));
             valueFound = true;
             setLoading(false);
         }
@@ -672,7 +684,7 @@ const UserPreferencesCard = () => {
 
                 // If key exists in API response, set state (respects existing false/true)
                 if (prefKey in apiValues) {
-                    setOrderNotifications(Boolean(apiValues[prefKey]));
+                    setOrderNotifications(normalizeBooleanPreference(apiValues[prefKey], defaultVal));
                     valueFound = true;
                 }
             }

@@ -48,7 +48,15 @@ export type RootStackParamList = {
     AddCoupon: undefined;
     EditCoupon: undefined;
     VendorKYC: undefined;
-    Orders: undefined;
+    Orders:
+        | {
+            status?: string;
+            sellerStatus?: string;
+            vendorOrderId?: string;
+            orderId?: string;
+            notificationRefreshKey?: string | number;
+        }
+        | undefined;
     ForgotPin: undefined;
     ProductListing: undefined;
     AddProduct: undefined;

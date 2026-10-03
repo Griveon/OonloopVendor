@@ -21,6 +21,8 @@ interface FloatingInputProps {
     style?: TextStyle | ViewStyle;
     onSubmitEditing?: () => void;
     returnKeyType?: "done" | "go" | "next" | "search" | "send";
+    onBlur?: () => void;
+    onFocus?: () => void;
 }
 
 const FloatingInput: React.FC<FloatingInputProps> = ({
@@ -39,6 +41,10 @@ const FloatingInput: React.FC<FloatingInputProps> = ({
     multiline = false,
     numberOfLines,
     style,
+    onSubmitEditing,
+    returnKeyType,
+    onBlur,
+    onFocus,
 }) => {
     const [focused, setFocused] = useState(false);
     const [hidden, setHidden] = useState(secureTextEntry);
@@ -75,12 +81,20 @@ const FloatingInput: React.FC<FloatingInputProps> = ({
                     keyboardType={keyboardType}
                     autoCapitalize={autoCapitalize}
                     secureTextEntry={hidden}
-                    onFocus={() => setFocused(true)}
-                    onBlur={() => setFocused(false)}
+                    onFocus={() => {
+                        setFocused(true);
+                        onFocus?.();
+                    }}
+                    onBlur={() => {
+                        setFocused(false);
+                        onBlur?.();
+                    }}
                     editable={editable}
                     pointerEvents={editable ? "auto" : "none"}
                     multiline={multiline}
                     numberOfLines={numberOfLines}
+                    onSubmitEditing={onSubmitEditing}
+                    returnKeyType={returnKeyType}
                 />
                 {showToggle && type === "password" && (
                     <TouchableOpacity

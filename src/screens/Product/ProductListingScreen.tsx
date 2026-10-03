@@ -58,6 +58,9 @@ interface ProductVariant {
     stock: number;
     sku: string;
     price: number;
+    productHandling?: number;
+    productHandlingCharges?: number;
+    customerSellingPrice?: number;
     mrp: number;
     images: ProductImage[];
 }
@@ -102,8 +105,8 @@ const getMinMaxPrice = (
 ): { minPrice: number; maxPrice: number; minMrp: number; maxMrp: number } => {
     if (!variants || variants.length === 0)
         return { minPrice: 0, maxPrice: 0, minMrp: 0, maxMrp: 0 };
-    const prices = variants.map((v) => v.price ?? 0);
-    const mrps = variants.map((v) => (v as any).mrp ?? v.price ?? 0);
+    const prices = variants.map((v) => v.customerSellingPrice ?? v.price ?? 0);
+    const mrps = variants.map((v) => (v as any).mrp ?? v.customerSellingPrice ?? v.price ?? 0);
     return {
         minPrice: Math.min(...prices),
         maxPrice: Math.max(...prices),
@@ -947,8 +950,8 @@ const ProductDetailsSheet = ({
                                                 </View>
                                             </View>
                                             <View style={sheetStyles.variantRight}>
-                                                <Text style={sheetStyles.variantPrice}>{formatPrice(variant.price)}</Text>
-                                                {variant.mrp > 0 && variant.mrp !== variant.price && (
+                                                <Text style={sheetStyles.variantPrice}>{formatPrice(variant.customerSellingPrice ?? variant.price)}</Text>
+                                                {variant.mrp > 0 && variant.mrp !== (variant.customerSellingPrice ?? variant.price) && (
                                                     <Text style={sheetStyles.variantMrp}>MRP {formatPrice(variant.mrp)}</Text>
                                                 )}
                                                 <Text style={sheetStyles.variantStock}>{variant.stock} pcs</Text>
