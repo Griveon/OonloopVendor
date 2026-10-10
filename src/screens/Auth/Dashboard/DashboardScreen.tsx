@@ -50,6 +50,14 @@ const ORDER_CARDS = [
     { title: "Cancelled", color: "#EF4444", status: "cancelled", icon: "close-circle-outline", navigateTo: "Orders" },
 ];
 
+// ─── Preorder card config ─────────────────────────────────────────────────────
+
+const PREORDER_CARDS = [
+    { title: "New", color: "#3B82F6", status: "placed", icon: "calendar-outline" },
+    { title: "Preparing", color: "#F59E0B", status: "preparing", icon: "restaurant-outline" },
+    { title: "Ready", color: "#10B981", status: "ready", icon: "bag-check-outline" },
+];
+
 // ─── Stat card config ─────────────────────────────────────────────────────────
 
 const STAT_CARD_META: {
@@ -251,6 +259,9 @@ const DashboardScreen = ({ navigation }: any) => {
     const [dashboardCounts, setDashboardCounts] = useState<DashboardCounts | null>(null);
     const [loadingCounts, setLoadingCounts] = useState(true);
 
+    // Preorder counts state (keyed by preorder status)
+    const [preorderCounts, setPreorderCounts] = useState<Record<string, number>>({});
+
     // KYC modal state
     const [showKycPendingModal, setShowKycPendingModal] = useState(false);
     const [showKycReviewModal, setShowKycReviewModal] = useState(false);
@@ -274,6 +285,7 @@ const DashboardScreen = ({ navigation }: any) => {
                 }
 
                 await fetchDashboardCounts();
+                fetchPreorderCounts();
                 await fetchKycStatus();
             };
 
@@ -334,6 +346,33 @@ const DashboardScreen = ({ navigation }: any) => {
         } finally {
             setLoadingCounts(false);
         }
+    };
+
+    // ── Fetch preorder counts ──────────────────────────────────────────────────
+    // There is no counts API for preorders, so read meta.total from the
+    // vendor preorder list with limit=1 for each active status.
+
+    const fetchPreorderCounts = async () => {
+        const results = await Promise.all(
+            PREORDER_CARDS.map((card) =>
+                getRequest(
+                    API_ENDPOINTS.PREORDERVENDORORDERS,
+                    { status: card.status, page: 1, limit: 1 },
+                    true,
+                    false
+                )
+            )
+        );
+
+        const counts: Record<string, number> = {};
+
+        results.forEach((res: any, index) => {
+            if (res?.success) {
+                counts[PREORDER_CARDS[index].status] = res?.meta?.total ?? 0;
+            }
+        });
+
+        setPreorderCounts(counts);
     };
 
     // ── Fetch KYC status & trigger modals ─────────────────────────────────────
@@ -439,6 +478,35 @@ const DashboardScreen = ({ navigation }: any) => {
                         />
                     </>
                 )}
+
+                {/* ── Preorders Overview ── */}
+                <Text style={styles.sectionHeading}>Preorders Overview</Text>
+
+                <View style={styles.statGrid}>
+                    {PREORDER_CARDS.map((item) => (
+                        <TouchableOpacity
+                            key={item.status}
+                            style={styles.statCard}
+                            activeOpacity={0.82}
+                            onPress={() =>
+                                navigation.navigate({
+                                    name: "PreorderQueue",
+                                    params: { status: item.status },
+                                    merge: false,
+                                })
+                            }
+                        >
+                            <View style={[styles.statIconWrap, { backgroundColor: item.color + "18" }]}>
+                                <Ionicons name={item.icon} size={22} color={item.color} />
+                            </View>
+                            <Text style={[styles.statCount, { color: item.color }]}>
+                                {preorderCounts[item.status] ?? 0}
+                            </Text>
+                            <Text style={styles.statLabel}>{item.title}</Text>
+                            <View style={[styles.statAccent, { backgroundColor: item.color }]} />
+                        </TouchableOpacity>
+                    ))}
+                </View>
 
                 {/* ── Orders Overview ── */}
                 <Text style={[styles.sectionHeading, { marginTop: 4 }]}>Orders Overview</Text>

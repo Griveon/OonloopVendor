@@ -447,12 +447,14 @@ const ProductCard = ({
     onEdit,
     onToggleStatus,
     onUpdateQty,
+    onPreorder,
 }: {
     product: Product;
     onView?: (product: Product) => void;
     onEdit?: (product: Product) => void;
     onToggleStatus?: (product: Product) => void;
     onUpdateQty?: (product: Product) => void;
+    onPreorder?: (product: Product) => void;
 }) => {
     const imageUrl = getPrimaryImage(product.images);
     const { minPrice, maxPrice, minMrp, maxMrp } = getMinMaxPrice(product.variants);
@@ -601,6 +603,13 @@ const ProductCard = ({
                     activeOpacity={0.75}
                 >
                     <Ionicons name="layers-outline" size={18} color={colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[cardStyles.rightIconBtn, { backgroundColor: '#FEF3C7' }]}
+                    onPress={() => onPreorder?.(product)}
+                    activeOpacity={0.75}
+                >
+                    <Ionicons name="calendar-outline" size={18} color={colors.warning} />
                 </TouchableOpacity>
             </View>
         </View>
@@ -1588,6 +1597,12 @@ const ProductListingScreen = ({ navigation }: any) => {
                             }
                             onToggleStatus={handleToggleStatus}
                             onUpdateQty={handleUpdateQty}
+                            onPreorder={(p) =>
+                                navigation.navigate('PreorderRules', {
+                                    productId: p._id,
+                                    productName: p.name,
+                                })
+                            }
                         />
                     )}
                     contentContainerStyle={[localStyles.container, { paddingBottom: 100 }]}

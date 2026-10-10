@@ -61,4 +61,7 @@ export const API_ENDPOINTS = {
     USERPREFERENCE_SET: "/userpreference/set",
     USERPREFERENCE_GET: "/userpreference/get",
     CALCULATEPRODUCTHANDLING: "/product/calculatehandling",
+    PREORDERCONFIG: "/preorder/config",
+    PREORDERCONFIGMINE: "/preorder/config/mine",
+    PREORDERVENDORORDERS: "/preorder/vendor/orders",
 }

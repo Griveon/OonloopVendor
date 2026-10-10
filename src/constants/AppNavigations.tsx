@@ -28,6 +28,9 @@ import VendorEditProductScreen from "../screens/Product/EditProductScreen";
 import SearchAndAddProduct from "../screens/Product/SearchAndAddProduct";
 import OrdersScreen from "../screens/Orders/OrdersScreen";
 import VendorAccountStatementScreen from "../screens/Accounts/VendorAccountStatementScreen";
+import PreorderProductsScreen from "../screens/Preorder/PreorderProductsScreen";
+import PreorderRulesScreen from "../screens/Preorder/PreorderRulesScreen";
+import PreorderQueueScreen from "../screens/Preorder/PreorderQueueScreen";
 // import DashboardScreen from "../screens/Dashboard/DashboardScreen"; // Uncomment when ready
 
 export type RootStackParamList = {
@@ -63,6 +66,15 @@ export type RootStackParamList = {
     EditProduct: undefined;
     SearchAndAddProduct: undefined;
     Accounts: undefined;
+    PreorderProducts: undefined;
+    PreorderRules: { productId: string; productName?: string };
+    PreorderQueue:
+        | {
+            status?: string;
+            preorderId?: string;
+            notificationRefreshKey?: string | number;
+        }
+        | undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -113,6 +125,9 @@ const AppNavigator = forwardRef<NavigationContainerRef<RootStackParamList>>((pro
                 <Stack.Screen name="EditProduct" component={VendorEditProductScreen} />
                 <Stack.Screen name="Accounts" component={VendorAccountStatementScreen} />
                 <Stack.Screen name="SearchAndAddProduct" component={SearchAndAddProduct} />
+                <Stack.Screen name="PreorderProducts" component={PreorderProductsScreen} />
+                <Stack.Screen name="PreorderRules" component={PreorderRulesScreen} />
+                <Stack.Screen name="PreorderQueue" component={PreorderQueueScreen} />
             </Stack.Navigator>
         </NavigationContainer>
     );

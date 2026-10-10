@@ -25,6 +25,7 @@ import { postRequest } from '../../constants/ApiClient';
 import { API_ENDPOINTS } from '../../constants/ApiEndpoints';
 import { USER_PREFERENCES } from '../../constants/userpreferences';
 import { navigate } from '../../components/utils/NavigationService';
+import { VENDOR_PREORDER_NOTIFICATION_EVENT } from '../../screens/Preorder/preorderUtils';
 
 
 /* =====================================================
@@ -48,6 +49,9 @@ export const DRIVER_NEW_PAID_ORDER_TYPE =
 
 export const VENDOR_NEW_ORDER_TYPE =
     'NEW_VENDOR_ORDER';
+
+export const VENDOR_NEW_PREORDER_TYPE =
+    'PREORDER_NEW';
 
 export const PAYMENT_SUCCESS_EVENT =
     'PAYMENT_SUCCESS';
@@ -204,13 +208,26 @@ const isVendorOrderNotification = (
     );
 };
 
+const isVendorPreorderNotification = (
+    remoteMessage:
+        FirebaseMessagingTypes.RemoteMessage,
+): boolean => {
+    return (
+        getNotificationType(
+            remoteMessage,
+        ) ===
+        VENDOR_NEW_PREORDER_TYPE
+    );
+};
+
 const isOrderNotification = (
     remoteMessage:
         FirebaseMessagingTypes.RemoteMessage,
 ): boolean => {
     return (
         isDriverOrderNotification(remoteMessage) ||
-        isVendorOrderNotification(remoteMessage)
+        isVendorOrderNotification(remoteMessage) ||
+        isVendorPreorderNotification(remoteMessage)
     );
 };
 
@@ -245,6 +262,7 @@ const getMessageDedupeId = (
     return String(
         remoteMessage?.messageId ||
         data?.notificationId ||
+        data?.preorderId ||
         data?.vendorOrderId ||
         data?.orderId ||
         `${getNotificationType(remoteMessage)}-${getNotificationEvent(remoteMessage)}`,
@@ -281,6 +299,19 @@ const emitVendorOrderRefresh = (
     remoteMessage:
         FirebaseMessagingTypes.RemoteMessage,
 ): void => {
+    if (isVendorPreorderNotification(remoteMessage)) {
+        DeviceEventEmitter.emit(
+            VENDOR_PREORDER_NOTIFICATION_EVENT,
+            {
+                preorderId:
+                    String(remoteMessage?.data?.preorderId || ''),
+                receivedAt:
+                    Date.now(),
+            },
+        );
+        return;
+    }
+
     if (!isVendorOrderNotification(remoteMessage)) return;
 
     DeviceEventEmitter.emit(
@@ -322,6 +353,19 @@ const handleNotificationOpen = (
         FirebaseMessagingTypes.RemoteMessage | null,
 ): void => {
     try {
+        if (remoteMessage && isVendorPreorderNotification(remoteMessage)) {
+            navigate(
+                'PreorderQueue',
+                {
+                    status: 'placed',
+                    preorderId:
+                        String(remoteMessage?.data?.preorderId || ''),
+                    notificationRefreshKey: Date.now(),
+                },
+            );
+            return;
+        }
+
         if (!remoteMessage || !isVendorOrderNotification(remoteMessage)) {
             return;
         }

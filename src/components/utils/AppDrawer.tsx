@@ -254,6 +254,16 @@ const AppDrawer = ({ navigation, closeDrawer }: any) => {
         },
         {
             kind: "section",
+            icon: "calendar-outline",
+            label: "Preorders",
+            key: "preorders",
+            children: [
+                { icon: "receipt-outline", label: "Preorder Orders", onPress: () => go("PreorderQueue") },
+                { icon: "bag-outline", label: "Preorder Products", onPress: () => go("PreorderProducts") },
+            ],
+        },
+        {
+            kind: "section",
             icon: "wallet-outline",
             label: "Accounts",
             key: "accounts",
