@@ -18,6 +18,7 @@ import { colors } from "../../constants/AppThem";
 import { clearUserData, getUserData } from "../AsyncStorage/AsyncStorage";
 import { getRequest } from "../../constants/ApiClient";
 import { API_ENDPOINTS } from "../../constants/ApiEndpoints";
+import { MANUAL_DELIVERY_FEATURES } from "../../constants/manualDeliveryConfig";
 
 const { width: W, height: H } = Dimensions.get("window");
 const DRAWER_WIDTH = W * 0.78;
@@ -252,6 +253,22 @@ const AppDrawer = ({ navigation, closeDrawer }: any) => {
                 { icon: "close-circle-outline", label: "Cancelled", onPress: () => go("Orders", { status: "cancelled" }) },
             ],
         },
+        {
+            kind: "item",
+            icon: "call-outline",
+            label: "Manual Deliveries",
+            onPress: () => go("ManualDeliveryListing"),
+        },
+        ...(MANUAL_DELIVERY_FEATURES.ENABLE_DRIVER_MODULE
+            ? [
+                  {
+                      kind: "item" as const,
+                      icon: "bicycle-outline",
+                      label: "Driver Deliveries",
+                      onPress: () => go("DriverManualDeliveryListing"),
+                  },
+              ]
+            : []),
         {
             kind: "section",
             icon: "wallet-outline",

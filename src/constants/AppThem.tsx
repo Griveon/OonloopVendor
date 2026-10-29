@@ -115,6 +115,21 @@ export const inputStyles = StyleSheet.create({
     inputFocused: {
         borderColor: colors.primary,
     },
+    container: {
+        backgroundColor: colors.formBg,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: colors.formBorder,
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        fontSize: 16,
+        color: colors.secondary,
+        fontFamily: Fonts.Regular,
+    },
+    focused: { borderColor: colors.primary },
+    error: { borderColor: colors.error },
+    placeholder: { color: colors.placeholder, fontFamily: Fonts.Regular },
+    errorText: { color: colors.error, marginTop: 4, fontSize: 12, fontFamily: Fonts.Regular },
 });
 
 

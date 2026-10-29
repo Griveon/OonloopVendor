@@ -61,4 +61,23 @@ export const API_ENDPOINTS = {
     USERPREFERENCE_SET: "/userpreference/set",
     USERPREFERENCE_GET: "/userpreference/get",
     CALCULATEPRODUCTHANDLING: "/product/calculatehandling",
-}
+    // Manual Delivery Endpoints
+    MANUAL_DELIVERY_PICKUP_DEFAULT: "/manual-deliveries/pickup-default",
+    MANUAL_DELIVERY_CALCULATE_DISTANCE: "/manual-deliveries/calculate-distance",
+    MANUAL_DELIVERY_CREATE: "/manual-deliveries",
+    MANUAL_DELIVERY_GET_ALL: "/manual-deliveries",
+    MANUAL_DELIVERY_GET_BY_ID: "/manual-deliveries",
+    MANUAL_DELIVERY_UPDATE: "/manual-deliveries",
+    MANUAL_DELIVERY_ASSIGN_DRIVER: "/manual-deliveries",
+    MANUAL_DELIVERY_CANCEL: "/manual-deliveries",
+
+    // Driver Manual Delivery Endpoints
+    DRIVER_MANUAL_DELIVERY_GET_ALL: "/manual-deliveries/driver",
+    DRIVER_MANUAL_DELIVERY_GET_BY_ID: "/manual-deliveries/driver",
+    DRIVER_MANUAL_DELIVERY_ACCEPT: "/manual-deliveries/driver",
+    DRIVER_MANUAL_DELIVERY_REJECT: "/manual-deliveries/driver",
+    DRIVER_MANUAL_DELIVERY_STATUS_UPDATE: "/manual-deliveries/driver/status",
+
+    // Driver Profiles
+    DRIVERS_GET_ALL: "/driverprofile/getall",
+};

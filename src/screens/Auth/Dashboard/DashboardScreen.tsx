@@ -463,6 +463,71 @@ const DashboardScreen = ({ navigation }: any) => {
                     ))}
                 </View>
 
+                {/* ── Manual Phone Deliveries ── */}
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 14, marginBottom: 8 }}>
+                    <Text style={[styles.sectionHeading, { marginTop: 0, marginBottom: 0 }]}>
+                        Manual Deliveries
+                    </Text>
+                    <TouchableOpacity
+                        onPress={() => navigation.navigate("ManualDeliveryListing")}
+                        activeOpacity={0.7}
+                    >
+                        <Text style={{ fontSize: 13, fontWeight: "700", color: colors.primary }}>
+                            View All →
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                    style={[
+                        styles.card,
+                        {
+                            width: "100%",
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            paddingVertical: 14,
+                            paddingHorizontal: 16,
+                            marginBottom: 16,
+                        },
+                    ]}
+                    activeOpacity={0.85}
+                    onPress={() => navigation.navigate("ManualDeliveryListing")}
+                >
+                    <View style={{ flexDirection: "row", alignItems: "center", flex: 1, gap: 12 }}>
+                        <View
+                            style={[
+                                styles.cardIconWrap,
+                                { backgroundColor: colors.primary + "18", width: 44, height: 44, borderRadius: 22 },
+                            ]}
+                        >
+                            <Ionicons name="call" size={20} color={colors.primary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={[styles.cardTitle, { fontSize: 15 }]}>
+                                Phone Call Deliveries
+                            </Text>
+                            <Text style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
+                                Record customer phone orders & assign drivers
+                            </Text>
+                        </View>
+                    </View>
+                    <TouchableOpacity
+                        style={{
+                            backgroundColor: colors.primary,
+                            paddingHorizontal: 12,
+                            paddingVertical: 6,
+                            borderRadius: 16,
+                        }}
+                        onPress={() => navigation.navigate("ManualDeliveryCreate")}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={{ fontSize: 12, fontWeight: "700", color: "#FFFFFF" }}>
+                            + New
+                        </Text>
+                    </TouchableOpacity>
+                </TouchableOpacity>
+
             </ScrollView>
 
             <BottomNavBar activeTab={activeTab} onTabPress={handleTabPress} />

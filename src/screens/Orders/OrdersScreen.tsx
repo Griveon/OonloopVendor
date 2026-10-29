@@ -1127,6 +1127,7 @@ const OrderCard = ({
     updatingOrderId,
     pickupOtpLoadingId,
     onViewDetail,
+    onRecreateOrder,
 }: {
     order: Order;
     onUpdateStatus: (order: Order, nextStatus: string) => void;
@@ -1134,6 +1135,7 @@ const OrderCard = ({
     updatingOrderId: string | null;
     pickupOtpLoadingId: string | null;
     onViewDetail: (order: Order) => void;
+    onRecreateOrder?: (order: Order) => void;
 }) => {
     const nextStatus = STATUS_FLOW[order.status];
     const showActionButton = canVendorUpdateStatus(order.status);
@@ -1155,15 +1157,32 @@ const OrderCard = ({
                     <Text style={styles.orderDate}>{formatDate(order.createdAt)}</Text>
                 </View>
 
-                <View
-                    style={[
-                        styles.statusBadge,
-                        { backgroundColor: statusColor + "15" },
-                    ]}
-                >
-                    <Text style={[styles.statusText, { color: statusColor }]}>
-                        {formatStatusLabel(order.status).toUpperCase()}
-                    </Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    {onRecreateOrder && (
+                        <TouchableOpacity
+                            style={styles.recreatePillBtn}
+                            onPress={(e) => {
+                                e.stopPropagation();
+                                onRecreateOrder(order);
+                            }}
+                            activeOpacity={0.7}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                            <Ionicons name="repeat" size={12} color="#2563EB" />
+                            <Text style={styles.recreatePillText}>Recreate</Text>
+                        </TouchableOpacity>
+                    )}
+
+                    <View
+                        style={[
+                            styles.statusBadge,
+                            { backgroundColor: statusColor + "15" },
+                        ]}
+                    >
+                        <Text style={[styles.statusText, { color: statusColor }]}>
+                            {formatStatusLabel(order.status).toUpperCase()}
+                        </Text>
+                    </View>
                 </View>
             </View>
 
@@ -1869,6 +1888,38 @@ const OrdersScreen = ({ route, navigation }: OrdersScreenProps) => {
         await updateOrderStatus(orderId, confirmModal.nextStatus);
     };
 
+    const handleRecreateOrder = (order: Order) => {
+        const custName =
+            (order.user?.firstName
+                ? `${order.user.firstName} ${order.user.lastName || ""}`.trim()
+                : order.shippingAddress?.name) || "Customer";
+
+        const mobile =
+            order.user?.mobileNumber ||
+            order.shippingAddress?.phone ||
+            "";
+
+        navigation?.navigate?.("ManualDeliveryCreate", {
+            prefillData: {
+                customer: {
+                    name: custName,
+                    mobileNumber: mobile,
+                    countryCode: "+91",
+                },
+                dropoff: {
+                    addressLine1: order.shippingAddress?.addressLine1 || "",
+                    addressLine2: order.shippingAddress?.addressLine2 || "",
+                    city: order.shippingAddress?.city || "",
+                    state: order.shippingAddress?.state || "",
+                    postalCode: order.shippingAddress?.pincode || "",
+                    landmark: (order.shippingAddress as any)?.landmark || "",
+                    mapLink: (order.shippingAddress as any)?.mapLink || "",
+                },
+                customerNotes: (order as any).notes || (order as any).customerNotes || "",
+            },
+        });
+    };
+
     return (
         <View style={localStyles.container}>
             <AppBar
@@ -1906,6 +1957,7 @@ const OrdersScreen = ({ route, navigation }: OrdersScreenProps) => {
                         updatingOrderId={updatingOrderId}
                         pickupOtpLoadingId={pickupOtpLoadingId}
                         onViewDetail={handleViewDetail}
+                        onRecreateOrder={handleRecreateOrder}
                     />
                 )}
                 ListEmptyComponent={
@@ -2128,6 +2180,22 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontWeight: "700",
         letterSpacing: 0.5,
+    },
+    recreatePillBtn: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 3,
+        backgroundColor: "#EFF6FF",
+        borderWidth: 1,
+        borderColor: "#BFDBFE",
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+    },
+    recreatePillText: {
+        fontSize: 11,
+        fontWeight: "700",
+        color: "#2563EB",
     },
     flowMiniBox: {
         flexDirection: "row",

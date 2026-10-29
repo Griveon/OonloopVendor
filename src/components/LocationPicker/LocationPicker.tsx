@@ -147,13 +147,13 @@ async function reverseGeocode(lat: number, lng: number): Promise<Partial<Address
 
 // ─── Bottom Sheet ─────────────────────────────────────────────────────────────
 
-interface SheetProps {
+export interface SheetProps {
     visible: boolean;
     onClose: () => void;
     onSelect: (addr: AddressResult) => void;
 }
 
-const LocationBottomSheet: React.FC<SheetProps> = ({ visible, onClose, onSelect }) => {
+export const LocationBottomSheet: React.FC<SheetProps> = ({ visible, onClose, onSelect }) => {
     const insets = useSafeAreaInsets();
     const isInitialRegionSet = useRef(true);
     const slideAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;

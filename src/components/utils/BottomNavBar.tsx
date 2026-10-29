@@ -68,7 +68,7 @@ const BottomNavBar = ({ activeTab, onTabPress }: BottomNavBarProps) => {
         if (tab.disabled) return; // ✅ block press
 
         onTabPress(tab.key);
-        navigation.navigate(tab.screen);
+        navigation.navigate(tab.screen as never);
     };
 
     return (

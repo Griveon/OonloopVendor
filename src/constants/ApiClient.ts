@@ -124,6 +124,38 @@ export const putRequest = async (
     }
 };
 
+export const patchRequest = async (
+    endpoint: string,
+    data: any,
+    authRequired = true,
+    isShowError = true
+) => {
+    try {
+        const headers = await getAuthHeaders(authRequired);
+
+        const response = await axios.patch(`${API_BASE_URL}${endpoint}`, data, {
+            headers,
+        });
+
+        return response.data;
+    } catch (error: any) {
+        console.error("API PATCH Error:", error?.response?.data || error);
+
+        const isUnauthorized = await redirectToLoginIfUnauthorized(error);
+
+        if (!isUnauthorized && isShowError) {
+            showApiError(error);
+        }
+
+        return {
+            success: false,
+            unauthorized: isUnauthorized,
+            message: getErrorMessage(error),
+            error: error?.response?.data?.error,
+        };
+    }
+};
+
 export const getRequest = async (
     endpoint: string,
     params?: Record<string, any>,

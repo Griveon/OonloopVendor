@@ -28,6 +28,12 @@ import VendorEditProductScreen from "../screens/Product/EditProductScreen";
 import SearchAndAddProduct from "../screens/Product/SearchAndAddProduct";
 import OrdersScreen from "../screens/Orders/OrdersScreen";
 import VendorAccountStatementScreen from "../screens/Accounts/VendorAccountStatementScreen";
+import ManualDeliveryListingScreen from "../screens/ManualDelivery/ManualDeliveryListingScreen";
+import ManualDeliveryCreateScreen from "../screens/ManualDelivery/ManualDeliveryCreateScreen";
+import ManualDeliveryDetailsScreen from "../screens/ManualDelivery/ManualDeliveryDetailsScreen";
+import ManualDeliveryEditScreen from "../screens/ManualDelivery/ManualDeliveryEditScreen";
+import DriverManualDeliveryListScreen from "../screens/ManualDelivery/driver/DriverManualDeliveryListScreen";
+import DriverManualDeliveryDetailsScreen from "../screens/ManualDelivery/driver/DriverManualDeliveryDetailsScreen";
 // import DashboardScreen from "../screens/Dashboard/DashboardScreen"; // Uncomment when ready
 
 export type RootStackParamList = {
@@ -63,6 +69,12 @@ export type RootStackParamList = {
     EditProduct: undefined;
     SearchAndAddProduct: undefined;
     Accounts: undefined;
+    ManualDeliveryListing: undefined;
+    ManualDeliveryCreate: { prefillData?: any; recreateFrom?: any } | undefined;
+    ManualDeliveryDetails: { id: string };
+    ManualDeliveryEdit: { id: string };
+    DriverManualDeliveryListing: undefined;
+    DriverManualDeliveryDetails: { id: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -113,6 +125,12 @@ const AppNavigator = forwardRef<NavigationContainerRef<RootStackParamList>>((pro
                 <Stack.Screen name="EditProduct" component={VendorEditProductScreen} />
                 <Stack.Screen name="Accounts" component={VendorAccountStatementScreen} />
                 <Stack.Screen name="SearchAndAddProduct" component={SearchAndAddProduct} />
+                <Stack.Screen name="ManualDeliveryListing" component={ManualDeliveryListingScreen} />
+                <Stack.Screen name="ManualDeliveryCreate" component={ManualDeliveryCreateScreen} />
+                <Stack.Screen name="ManualDeliveryDetails" component={ManualDeliveryDetailsScreen} />
+                <Stack.Screen name="ManualDeliveryEdit" component={ManualDeliveryEditScreen} />
+                <Stack.Screen name="DriverManualDeliveryListing" component={DriverManualDeliveryListScreen} />
+                <Stack.Screen name="DriverManualDeliveryDetails" component={DriverManualDeliveryDetailsScreen} />
             </Stack.Navigator>
         </NavigationContainer>
     );
