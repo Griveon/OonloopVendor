@@ -4,7 +4,6 @@ import React, { useEffect } from "react";
 import { StatusBar, useColorScheme } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
-import Geolocation from "react-native-geolocation-service";
 
 import { colors } from "./src/constants/AppThem";
 import { navigationRef } from "./src/components/utils/NavigationService";
@@ -46,16 +45,16 @@ const App = () => {
   
   return (
     <SafeAreaProvider>
-      {/* <AppUpdateProvider forceUpdate={false}> */}
-      <StatusBar
-        barStyle={isDarkMode ? "light-content" : "dark-content"}
-        backgroundColor={colors.scaffoldBg}
-      />
+      <AppUpdateProvider enabled={!__DEV__}>
+        <StatusBar
+          barStyle={isDarkMode ? "light-content" : "dark-content"}
+          backgroundColor={colors.scaffoldBg}
+        />
 
-      <AppNavigator ref={navigationRef} />
+        <AppNavigator ref={navigationRef} />
 
-      <Toast />
-      {/* </AppUpdateProvider> */}
+        <Toast />
+      </AppUpdateProvider>
     </SafeAreaProvider>
   );
 };

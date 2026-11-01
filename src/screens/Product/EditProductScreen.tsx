@@ -34,6 +34,7 @@ import { getRequest, postRequest, putRequest, uploadRequest } from "../../consta
 import { API_ENDPOINTS } from "../../constants/ApiEndpoints";
 import ColorPicker from "react-native-wheel-color-picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { unitRegistry } from "../../utils/unitRegistry";
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1855,7 +1856,11 @@ const VendorEditProductScreen = ({ navigation, route }: any) => {
             ]);
             if (catRes.status === "fulfilled") setCategories((catRes.value as any)?.data ?? []);
             if (brandRes.status === "fulfilled") setBrands((brandRes.value as any)?.data ?? []);
-            if (unitRes.status === "fulfilled") setUnits((unitRes.value as any)?.data ?? []);
+            if (unitRes.status === "fulfilled") {
+                const uData = (unitRes.value as any)?.data ?? [];
+                setUnits(uData);
+                unitRegistry.registerUnits(uData);
+            }
             if (gstRes.status === "fulfilled") setGstRules((gstRes.value as any)?.data ?? []);
             if (pcVariants.status === "fulfilled") setVariantTypes((pcVariants.value as any)?.data ?? []);
         } catch (e) {

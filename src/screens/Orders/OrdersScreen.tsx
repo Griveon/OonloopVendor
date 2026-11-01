@@ -15,7 +15,6 @@ import {
     RefreshControl,
     Modal,
     Dimensions,
-    Image,
     StyleSheet,
     TextInput,
     ScrollView,
@@ -30,21 +29,13 @@ import { colors, localStyles, textStyles } from "../../constants/AppThem";
 import { getRequest, putRequest } from "../../constants/ApiClient";
 import { API_ENDPOINTS } from "../../constants/ApiEndpoints";
 import { getUserData } from "../../components/AsyncStorage/AsyncStorage";
+import OrderProductItem from "../../components/orders/OrderProductItem";
+import { OrderItem } from "../../utils/orderItems";
+import { unitRegistry } from "../../utils/unitRegistry";
 
 const { height } = Dimensions.get("window");
 
 // ─── Types ───────────────────────────────────────────────────────────
-
-interface OrderItem {
-    product: string;
-    variant?: string;
-    name: string;
-    price: number;
-    mrp?: number;
-    quantity: number;
-    images?: { url: string }[];
-    total: number;
-}
 
 interface Address {
     name?: string;
@@ -879,43 +870,11 @@ const OrderDetailSheet = ({
 
                         <View style={detailStyles.section}>
                             <Text style={detailStyles.sectionTitle}>
-                                Items ({getOrderItemsCount(order)})
+                                Products ({order.items?.length || 0}) · Qty: {getOrderItemsCount(order)}
                             </Text>
 
-                            {order.items.map((item, idx) => (
-                                <View key={idx} style={detailStyles.itemCard}>
-                                    {item.images?.[0]?.url ? (
-                                        <Image
-                                            source={{ uri: item.images[0].url }}
-                                            style={detailStyles.itemImage}
-                                        />
-                                    ) : (
-                                        <View style={detailStyles.itemImagePlaceholder}>
-                                            <Ionicons
-                                                name="cube-outline"
-                                                size={24}
-                                                color={colors.placeholder}
-                                            />
-                                        </View>
-                                    )}
-
-                                    <View style={detailStyles.itemDetails}>
-                                        <Text
-                                            style={detailStyles.itemName}
-                                            numberOfLines={2}
-                                        >
-                                            {item.name}
-                                        </Text>
-
-                                        <Text style={detailStyles.itemMeta}>
-                                            Qty: {item.quantity} × {formatCurrency(item.price)}
-                                        </Text>
-
-                                        <Text style={detailStyles.itemTotal}>
-                                            {formatCurrency(item.total)}
-                                        </Text>
-                                    </View>
-                                </View>
+                            {(order.items || []).map((item, idx) => (
+                                <OrderProductItem key={idx} item={item} expanded />
                             ))}
                         </View>
 
@@ -1204,44 +1163,14 @@ const OrderCard = ({
                 </View>
             </View>
 
-            {order.items.slice(0, 2).map((item, idx) => (
-                <View key={idx} style={styles.itemRow}>
-                    {item.images?.[0]?.url ? (
-                        <Image
-                            source={{ uri: item.images[0].url }}
-                            style={styles.itemImage}
-                        />
-                    ) : (
-                        <View style={styles.itemImagePlaceholder}>
-                            <Ionicons
-                                name="cube-outline"
-                                size={20}
-                                color={colors.placeholder}
-                            />
-                        </View>
-                    )}
-
-                    <View style={styles.itemInfo}>
-                        <Text style={styles.itemName} numberOfLines={2}>
-                            {item.name}
-                        </Text>
-
-                        <Text style={styles.itemMeta}>
-                            Qty: {item.quantity} × {formatCurrency(item.price)}
-                        </Text>
-
-                        <Text style={styles.itemTotal}>
-                            {formatCurrency(item.total)}
-                        </Text>
-                    </View>
-                </View>
+            {(order.items || []).slice(0, 2).map((item, idx) => (
+                <OrderProductItem key={idx} item={item} />
             ))}
 
-            {order.items.length > 2 && (
-                <Text style={styles.moreItemsText}>
-                    +{order.items.length - 2} more item(s)
-                </Text>
-            )}
+            <TouchableOpacity accessibilityRole="button"
+                onPress={(event) => { event.stopPropagation(); onViewDetail(order); }}>
+                <Text style={styles.moreItemsText}>View all products ({order.items?.length || 0})</Text>
+            </TouchableOpacity>
 
             <View style={styles.addressBox}>
                 <Ionicons
@@ -1561,6 +1490,10 @@ const OrdersScreen = ({ route, navigation }: OrdersScreenProps) => {
             fetchOrders,
         ])
     );
+
+    useEffect(() => {
+        unitRegistry.fetchAndCacheUnits().catch(() => {});
+    }, []);
 
     useEffect(() => {
         const subscription = DeviceEventEmitter.addListener(
