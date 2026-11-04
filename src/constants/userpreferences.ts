@@ -60,12 +60,12 @@ export const USER_PREFERENCES = {
     VENDOR_ORDER_NOTIFICATIONS: {
         key: "isVendorWantsOrderNotifications",
         type: "boolean",
-        default: false,
+        default: true,
     },
     
     DRIVER_ORDER_NOTIFICATIONS: {
         key: "isDriverWantsOrderNotifications",
         type: "boolean",
-        default: false,
+        default: true,
     },
 } as const;

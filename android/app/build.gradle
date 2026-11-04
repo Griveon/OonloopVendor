@@ -83,8 +83,8 @@ android {
         applicationId "com.oonloopvendor.merchant"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 35
-        versionName "3.7"
+        versionCode 36
+        versionName "3.8"
         buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", "false"
         buildConfigField "boolean", "IS_EDGE_TO_EDGE_ENABLED", "false"
 
