@@ -149,6 +149,25 @@ export const ManualDeliveryCard: React.FC<Props> = ({
                         <Text style={styles.distanceText}>{distanceText}</Text>
                     </View>
                 )}
+
+                {delivery.pricing && (
+                    <View style={styles.priceRow}>
+                        <Ionicons
+                            name="receipt-outline"
+                            size={14}
+                            color="#059669"
+                            style={styles.priceIcon}
+                        />
+                        <Text style={styles.priceText}>
+                            Total: ₹{delivery.pricing.totalAmount.toFixed(2)}
+                        </Text>
+                        {delivery.paymentStatus === "PAID" && (
+                            <View style={styles.paidPill}>
+                                <Text style={styles.paidPillText}>PAID</Text>
+                            </View>
+                        )}
+                    </View>
+                )}
             </View>
 
             {/* Driver section */}
@@ -330,6 +349,36 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: "600",
         color: "#059669",
+    },
+    priceRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginTop: 4,
+        backgroundColor: "#F0FDF4",
+        paddingVertical: 4,
+        paddingHorizontal: 8,
+        borderRadius: 8,
+        alignSelf: "flex-start",
+        gap: 6,
+    },
+    priceIcon: {
+        marginRight: 2,
+    },
+    priceText: {
+        fontSize: 12,
+        fontWeight: "700",
+        color: "#166534",
+    },
+    paidPill: {
+        backgroundColor: "#DCFCE7",
+        paddingHorizontal: 5,
+        paddingVertical: 1,
+        borderRadius: 4,
+    },
+    paidPillText: {
+        fontSize: 9,
+        fontWeight: "800",
+        color: "#15803D",
     },
     driverSection: {
         flexDirection: "row",

@@ -18,12 +18,15 @@ import { manualDeliveryApi } from "../../services/manualDeliveryApi";
 import type {
     ManualDeliveryPickupDefault,
     CalculateDistanceResult,
+    ManualDeliveryPricing,
 } from "../../types/manualDelivery.types";
 import {
     LocationBottomSheet,
     AddressResult,
 } from "../../components/LocationPicker/LocationPicker";
 import Toast from "react-native-toast-message";
+import RazorpayCheckout from "react-native-razorpay";
+import { getUserData } from "../../components/AsyncStorage/AsyncStorage";
 
 export const ManualDeliveryCreateScreen = ({ route, navigation }: any) => {
     const prefill = route?.params?.prefillData || route?.params?.recreateFrom || route?.params?.initialData;
@@ -59,6 +62,9 @@ export const ManualDeliveryCreateScreen = ({ route, navigation }: any) => {
     const [distanceResult, setDistanceResult] = useState<CalculateDistanceResult | null>(null);
     const [calculatingDistance, setCalculatingDistance] = useState(false);
     const distanceDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // ─── Section 6: Price & Bill Summary State ───────────────────────────────────
+    const [pricing, setPricing] = useState<ManualDeliveryPricing | null>(null);
 
     // ─── Submission State ────────────────────────────────────────────────────────
     const [submitting, setSubmitting] = useState(false);
@@ -105,6 +111,7 @@ export const ManualDeliveryCreateScreen = ({ route, navigation }: any) => {
 
             if (lat === null || lng === null) {
                 setDistanceResult(null);
+                setPricing(null);
                 return;
             }
 
@@ -117,12 +124,15 @@ export const ManualDeliveryCreateScreen = ({ route, navigation }: any) => {
 
                     if (res.success && res.data) {
                         setDistanceResult(res.data);
+                        setPricing(res.data.pricing || null);
                     } else {
                         setDistanceResult(null);
+                setPricing(null);
                     }
                 } catch (error) {
                     console.log("Distance calculation error:", error);
                     setDistanceResult(null);
+                setPricing(null);
                 } finally {
                     setCalculatingDistance(false);
                 }
@@ -245,7 +255,7 @@ export const ManualDeliveryCreateScreen = ({ route, navigation }: any) => {
     };
 
     // ─── Create Delivery Action ──────────────────────────────────────────────────
-    const handleCreateDelivery = async () => {
+    const handlePayAndCreateOrder = async () => {
         if (!customerName.trim() || customerName.trim().length < 2) {
             Alert.alert("Validation", "Please enter a valid customer name (at least 2 characters).");
             return;
@@ -265,10 +275,24 @@ export const ManualDeliveryCreateScreen = ({ route, navigation }: any) => {
             return;
         }
 
+        if (calculatingDistance) {
+            Alert.alert("Please Wait", "Distance and price are still being calculated. Please wait a moment.");
+            return;
+        }
+
+        if (!pricing || latitude === null || longitude === null) {
+            Alert.alert(
+                "Location Required",
+                "Please select the customer's delivery location on the map or paste a valid Google Maps link so distance and delivery fee can be calculated."
+            );
+            return;
+        }
+
         try {
             setSubmitting(true);
 
-            const payload = {
+            // 1. Create the Manual Delivery record
+            const deliveryPayload = {
                 customer: {
                     name: customerName.trim(),
                     mobileNumber: cleanedMobile,
@@ -301,32 +325,165 @@ export const ManualDeliveryCreateScreen = ({ route, navigation }: any) => {
                 customerNotes: customerNotes.trim() || undefined,
             };
 
-            const res = await manualDeliveryApi.createManualDelivery(payload);
+            const createRes = await manualDeliveryApi.createManualDelivery(deliveryPayload);
+            const manualDelivery = createRes?.data;
 
-            if (res.success && res.data) {
-                Toast.show({
-                    type: "success",
-                    text1: "Delivery Created!",
-                    text2: `Reference #${res.data.deliveryNumber} created successfully.`,
-                });
-
-                // Navigate directly to details screen
-                navigation.replace("ManualDeliveryDetails", {
-                    id: res.data._id,
-                });
-            } else {
-                Toast.show({
-                    type: "error",
-                    text1: "Creation Failed",
-                    text2: res.message || "Failed to create manual delivery.",
-                });
+            if (!createRes?.success || !manualDelivery?._id) {
+                throw new Error(createRes?.message || "Failed to create manual delivery order.");
             }
-        } catch (error: any) {
-            Toast.show({
-                type: "error",
-                text1: "Submission Error",
-                text2: error?.message || "Something went wrong.",
-            });
+
+            // 2. Initialize payment transaction
+            const txnRes = await manualDeliveryApi.createPaymentOrder(manualDelivery._id);
+            const txnData = txnRes?.data;
+
+            if (!txnRes?.success || !txnData) {
+                throw new Error(txnRes?.message || "Failed to initialize payment transaction.");
+            }
+
+            // Handle DEV demo mode if enabled
+            if (txnData.demo) {
+                const verifyRes = await manualDeliveryApi.verifyPayment({
+                    transactionId: txnData.transactionId,
+                    razorpay_order_id: txnData.orderId,
+                    razorpay_payment_id: `DEMO-PAY-${Date.now()}`,
+                    razorpay_signature: "demo",
+                });
+
+                if (verifyRes?.success) {
+                    Alert.alert(
+                        "Success",
+                        "Order created & payment verified successfully!",
+                        [
+                            {
+                                text: "View Order",
+                                onPress: () => {
+                                    navigation.replace("ManualDeliveryDetails", { id: manualDelivery._id });
+                                },
+                            },
+                        ]
+                    );
+                    navigation.replace("ManualDeliveryDetails", { id: manualDelivery._id });
+                } else {
+                    Alert.alert(
+                        "Payment Verification Issue",
+                        verifyRes?.message || "Could not verify payment. Please check order details.",
+                        [
+                            {
+                                text: "View Order",
+                                onPress: () => {
+                                    navigation.replace("ManualDeliveryDetails", { id: manualDelivery._id });
+                                },
+                            },
+                        ]
+                    );
+                    navigation.replace("ManualDeliveryDetails", { id: manualDelivery._id });
+                }
+                return;
+            }
+
+            // 3. Open Razorpay Checkout modal
+            const { user: sessionUser } = await getUserData();
+            const fullName =
+                sessionUser?.name ||
+                [sessionUser?.firstName, sessionUser?.lastName].filter(Boolean).join(" ") ||
+                pickup?.storeName ||
+                "Seller";
+
+            const options: any = {
+                description: `Delivery charges for #${manualDelivery.deliveryNumber || "Manual Order"}`,
+                currency: txnData.currency || "INR",
+                key: txnData.key,
+                amount: txnData.amount, // amount in paise
+                order_id: txnData.orderId,
+                name: "Oonloop",
+                prefill: {
+                    email: sessionUser?.email || "seller@oonloop.com",
+                    contact: sessionUser?.mobileNumber || sessionUser?.phone || sessionUser?.mobile || "",
+                    name: fullName,
+                },
+                theme: { color: colors.primary || "#0F8A5F" },
+            };
+
+            let paymentResponse: any;
+            try {
+                paymentResponse = await RazorpayCheckout.open(options);
+            } catch (razorpayError: any) {
+                console.log("Razorpay payment cancelled or failed:", razorpayError);
+                Alert.alert(
+                    "Payment Cancelled",
+                    "Payment was not completed. You can retry payment from the order screen.",
+                    [
+                        {
+                            text: "View Order",
+                            onPress: () => {
+                                navigation.replace("ManualDeliveryDetails", { id: manualDelivery._id });
+                            },
+                        },
+                        {
+                            text: "Stay Here",
+                            style: "cancel",
+                        },
+                    ]
+                );
+                return;
+            }
+
+            // 4. Verify Payment with backend
+            try {
+                const verifyRes = await manualDeliveryApi.verifyPaymentWithRetry({
+                    transactionId: txnData.transactionId,
+                    razorpay_order_id: paymentResponse.razorpay_order_id,
+                    razorpay_payment_id: paymentResponse.razorpay_payment_id,
+                    razorpay_signature: paymentResponse.razorpay_signature,
+                });
+
+                if (verifyRes?.success) {
+                    Alert.alert(
+                        "Payment Successful",
+                        "Your manual delivery order has been broadcasted to nearby drivers.",
+                        [
+                            {
+                                text: "View Order",
+                                onPress: () => {
+                                    navigation.replace("ManualDeliveryDetails", { id: manualDelivery._id });
+                                },
+                            },
+                        ]
+                    );
+                    navigation.replace("ManualDeliveryDetails", { id: manualDelivery._id });
+                } else {
+                    Alert.alert(
+                        "Payment Received",
+                        "Payment received. If order confirmation takes a moment, please check the order details screen.",
+                        [
+                            {
+                                text: "View Order",
+                                onPress: () => {
+                                    navigation.replace("ManualDeliveryDetails", { id: manualDelivery._id });
+                                },
+                            },
+                        ]
+                    );
+                    navigation.replace("ManualDeliveryDetails", { id: manualDelivery._id });
+                }
+            } catch (verifyError: any) {
+                console.error("Payment verification retry failed:", verifyError);
+                Alert.alert(
+                    "Verification In Progress",
+                    "Payment completed via Razorpay. Your order will be confirmed shortly. You can view the order status on the order screen.",
+                    [
+                        {
+                            text: "View Order",
+                            onPress: () => {
+                                navigation.replace("ManualDeliveryDetails", { id: manualDelivery._id });
+                            },
+                        },
+                    ]
+                );
+                navigation.replace("ManualDeliveryDetails", { id: manualDelivery._id });
+            }
+        } catch (err: any) {
+            Alert.alert("Error", err?.response?.data?.message || err?.message || "Something went wrong.");
         } finally {
             setSubmitting(false);
         }
@@ -728,7 +885,89 @@ export const ManualDeliveryCreateScreen = ({ route, navigation }: any) => {
                             </View>
                         )}
                     </View>
-                </ScrollView>
+                
+                    {/* ── SECTION 6: PRICE SUMMARY ── */}
+                    {pricing ? (
+                        <View style={styles.sectionCard}>
+                            <View style={styles.sectionHeaderBetween}>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                                    <View style={[styles.sectionNumber, { backgroundColor: "#ECFDF5" }]}>
+                                        <Text style={[styles.sectionNumberText, { color: "#059669" }]}>6</Text>
+                                    </View>
+                                    <Text style={styles.sectionTitle}>PRICE SUMMARY</Text>
+                                </View>
+                                <View style={styles.verifiedPricePill}>
+                                    <Ionicons name="shield-checkmark" size={13} color="#059669" />
+                                    <Text style={styles.verifiedPriceText}>Live Quote</Text>
+                                </View>
+                            </View>
+
+                            <View style={styles.billContainer}>
+                                <View style={styles.billRow}>
+                                    <Text style={styles.billLabel}>
+                                        Delivery Charges ({pricing.distanceKm ? `${pricing.distanceKm} km` : "Standard"})
+                                    </Text>
+                                    <Text style={styles.billValue}>₹{pricing.deliveryFee.toFixed(2)}</Text>
+                                </View>
+                                <View style={styles.billRow}>
+                                    <Text style={styles.billLabel}>Platform Charges</Text>
+                                    <Text style={styles.billValue}>₹{pricing.platformFee.toFixed(2)}</Text>
+                                </View>
+                                <View style={styles.billRow}>
+                                    <Text style={styles.billLabel}>GST (18%)</Text>
+                                    <Text style={styles.billValue}>₹{pricing.gstAmount.toFixed(2)}</Text>
+                                </View>
+                                <View style={styles.billDivider} />
+                                <View style={[styles.billRow, styles.totalRow]}>
+                                    <View>
+                                        <Text style={styles.totalLabel}>Total Payable</Text>
+                                        <Text style={styles.totalSub}>Delivery + Platform + 18% GST</Text>
+                                    </View>
+                                    <Text style={styles.totalValue}>₹{pricing.totalAmount.toFixed(2)}</Text>
+                                </View>
+                                <View style={styles.securePaymentBanner}>
+                                    <Ionicons name="lock-closed" size={12} color="#059669" />
+                                    <Text style={styles.securePaymentText}>
+                                        100% Secure Checkout powered by Razorpay
+                                    </Text>
+                                </View>
+                            </View>
+                        </View>
+                    ) : calculatingDistance ? (
+                        <View style={styles.sectionCard}>
+                            <View style={styles.sectionHeader}>
+                                <View style={[styles.sectionNumber, { backgroundColor: "#ECFDF5" }]}>
+                                    <Text style={[styles.sectionNumberText, { color: "#059669" }]}>6</Text>
+                                </View>
+                                <Text style={styles.sectionTitle}>PRICE SUMMARY</Text>
+                            </View>
+                            <View style={styles.pricingLoadingBox}>
+                                <ActivityIndicator size="small" color="#059669" />
+                                <Text style={styles.pricingLoadingText}>
+                                    Calculating delivery & platform fee...
+                                </Text>
+                            </View>
+                        </View>
+                    ) : (
+                        <View style={styles.sectionCard}>
+                            <View style={styles.sectionHeader}>
+                                <View style={[styles.sectionNumber, { backgroundColor: "#F1F5F9" }]}>
+                                    <Text style={[styles.sectionNumberText, { color: "#64748B" }]}>6</Text>
+                                </View>
+                                <Text style={styles.sectionTitle}>PRICE SUMMARY</Text>
+                            </View>
+                            <View style={styles.pricingPlaceholderBox}>
+                                <Ionicons name="receipt-outline" size={24} color="#94A3B8" />
+                                <Text style={styles.pricingPlaceholderTitle}>
+                                    Delivery charges not yet calculated
+                                </Text>
+                                <Text style={styles.pricingPlaceholderSub}>
+                                    Select customer dropoff location on map or paste a Google Maps link above to get exact road distance and delivery pricing.
+                                </Text>
+                            </View>
+                        </View>
+                    )}
+</ScrollView>
 
                 {/* ── STICKY BOTTOM ACTION ── */}
                 <View style={styles.stickyFooter}>
@@ -737,21 +976,28 @@ export const ManualDeliveryCreateScreen = ({ route, navigation }: any) => {
                             styles.submitBtn,
                             (!isFormValid() || submitting) && styles.submitBtnDisabled,
                         ]}
-                        onPress={handleCreateDelivery}
+                        onPress={handlePayAndCreateOrder}
                         disabled={!isFormValid() || submitting}
                         activeOpacity={0.8}
                     >
                         {submitting ? (
-                            <ActivityIndicator size="small" color="#FFFFFF" />
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                                <ActivityIndicator size="small" color="#FFFFFF" />
+                                <Text style={styles.submitBtnText}>Processing Payment...</Text>
+                            </View>
                         ) : (
                             <>
                                 <Ionicons
-                                    name={isRecreateMode ? "repeat" : "paper-plane"}
+                                    name={pricing ? "card-outline" : isRecreateMode ? "repeat" : "paper-plane"}
                                     size={18}
                                     color="#FFFFFF"
                                 />
                                 <Text style={styles.submitBtnText}>
-                                    {isRecreateMode ? "Recreate Order" : "Create Delivery"}
+                                    {pricing
+                                        ? `Pay ₹${pricing.totalAmount.toFixed(2)} & ${isRecreateMode ? "Recreate Order" : "Create Order"}`
+                                        : isRecreateMode
+                                        ? "Recreate Order"
+                                        : "Pay & Create Order"}
                                 </Text>
                             </>
                         )}
@@ -1233,6 +1479,124 @@ const styles = StyleSheet.create({
         lineHeight: 16,
         marginTop: 5,
         fontStyle: "italic",
+    },
+
+    billContainer: {
+        backgroundColor: "#F8FAFC",
+        borderRadius: 12,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: "#E2E8F0",
+    },
+    billRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingVertical: 6,
+    },
+    billLabel: {
+        fontSize: 13,
+        color: "#475569",
+        fontWeight: "500",
+    },
+    billValue: {
+        fontSize: 13,
+        color: "#1E293B",
+        fontWeight: "600",
+    },
+    billDivider: {
+        height: 1,
+        backgroundColor: "#E2E8F0",
+        marginVertical: 10,
+    },
+    totalRow: {
+        paddingTop: 4,
+        paddingBottom: 2,
+    },
+    totalLabel: {
+        fontSize: 15,
+        fontWeight: "800",
+        color: "#0F172A",
+    },
+    totalSub: {
+        fontSize: 10,
+        color: "#64748B",
+        marginTop: 1,
+    },
+    totalValue: {
+        fontSize: 18,
+        fontWeight: "800",
+        color: "#059669",
+    },
+    verifiedPricePill: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 4,
+        backgroundColor: "#ECFDF5",
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: "#A7F3D0",
+    },
+    verifiedPriceText: {
+        fontSize: 11,
+        fontWeight: "700",
+        color: "#059669",
+    },
+    securePaymentBanner: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 5,
+        marginTop: 10,
+        paddingTop: 8,
+        borderTopWidth: 1,
+        borderTopColor: "#E2E8F0",
+    },
+    securePaymentText: {
+        fontSize: 11,
+        color: "#059669",
+        fontWeight: "600",
+    },
+    pricingLoadingBox: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: 18,
+        gap: 8,
+        backgroundColor: "#F8FAFC",
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: "#E2E8F0",
+    },
+    pricingLoadingText: {
+        fontSize: 13,
+        color: "#059669",
+        fontWeight: "600",
+    },
+    pricingPlaceholderBox: {
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: 20,
+        paddingHorizontal: 16,
+        backgroundColor: "#F8FAFC",
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: "#E2E8F0",
+    },
+    pricingPlaceholderTitle: {
+        fontSize: 13,
+        fontWeight: "700",
+        color: "#64748B",
+        marginTop: 8,
+    },
+    pricingPlaceholderSub: {
+        fontSize: 11,
+        color: "#94A3B8",
+        textAlign: "center",
+        marginTop: 4,
+        lineHeight: 16,
     },
 });
 

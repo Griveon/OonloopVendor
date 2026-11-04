@@ -11,6 +11,20 @@ export type ManualDeliveryStatus =
 
 export type DistanceCalculationMethod = "ROAD" | "STRAIGHT_LINE" | null;
 
+export interface ManualDeliveryPricing {
+    distanceKm?: number;
+    deliveryFee: number;
+    platformFee: number;
+    deliveryGst?: number;
+    platformGst?: number;
+    totalDeliveryCharge?: number;
+    totalPlatformCharge?: number;
+    subtotal: number;
+    gstRate?: number;
+    gstAmount: number;
+    totalAmount: number;
+}
+
 export interface ManualDeliveryCustomer {
     name: string;
     mobileNumber: string;
@@ -107,6 +121,10 @@ export interface ManualDelivery {
     rejectionReason?: string | null;
     statusHistory: ManualDeliveryStatusHistory[];
     assignmentHistory: ManualDeliveryAssignmentHistory[];
+    pricing?: ManualDeliveryPricing | null;
+    paymentStatus?: "PENDING" | "PAID" | "FAILED" | string | null;
+    paymentTransaction?: string | null;
+    paidAt?: string | null;
     isActive: boolean;
     createdAt: string;
     updatedAt: string;
@@ -162,6 +180,27 @@ export interface CalculateDistanceResult {
     calculationMethod?: DistanceCalculationMethod | null;
     provider?: string | null;
     calculatedAt?: string | null;
+    pricing?: ManualDeliveryPricing | null;
+}
+
+export interface CreateManualDeliveryPaymentResponse {
+    orderId: string;
+    amount: number;
+    currency: string;
+    key: string;
+    transactionId: string;
+    demo?: boolean;
+}
+
+export interface VerifyManualDeliveryPaymentPayload {
+    transactionId: string;
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+}
+
+export interface VerifyManualDeliveryPaymentResponse {
+    deliveryId: string;
 }
 
 export interface DriverStatusUpdatePayload {

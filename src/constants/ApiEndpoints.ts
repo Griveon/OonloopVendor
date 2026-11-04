@@ -71,6 +71,10 @@ export const API_ENDPOINTS = {
     MANUAL_DELIVERY_ASSIGN_DRIVER: "/manual-deliveries",
     MANUAL_DELIVERY_CANCEL: "/manual-deliveries",
 
+    // Manual Delivery Payment Endpoints
+    PAYMENT_TRANSACTION_CREATE_MANUAL_DELIVERY: "/paymenttransaction/createmanualdelivery",
+    PAYMENT_TRANSACTION_VERIFY_MANUAL_DELIVERY: "/paymenttransaction/verifymanualdelivery",
+
     // Driver Manual Delivery Endpoints
     DRIVER_MANUAL_DELIVERY_GET_ALL: "/manual-deliveries/driver",
     DRIVER_MANUAL_DELIVERY_GET_BY_ID: "/manual-deliveries/driver",

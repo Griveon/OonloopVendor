@@ -10,7 +10,10 @@ import {
     RefreshControl,
     Platform,
 } from "react-native";
+import { Alert } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
+import RazorpayCheckout from "react-native-razorpay";
+import { getUserData } from "../../components/AsyncStorage/AsyncStorage";
 import AppBar from "../../components/utils/AppBar";
 import { colors } from "../../constants/AppThem";
 import { manualDeliveryApi } from "../../services/manualDeliveryApi";
@@ -47,6 +50,7 @@ export const ManualDeliveryDetailsScreen = ({ route, navigation }: any) => {
     const [refreshing, setRefreshing] = useState(false);
     const [assignModalVisible, setAssignModalVisible] = useState(false);
     const [cancelModalVisible, setCancelModalVisible] = useState(false);
+    const [paying, setPaying] = useState(false);
 
     const fetchDetails = useCallback(async (isRefresh = false) => {
         if (!deliveryId) return;
@@ -71,7 +75,114 @@ export const ManualDeliveryDetailsScreen = ({ route, navigation }: any) => {
         }, [fetchDetails])
     );
 
-    const handleCall = (phone?: string) => {
+        const handleRetryPayment = async () => {
+        if (!delivery || paying) return;
+
+        try {
+            setPaying(true);
+
+            // 1. Initialize payment transaction
+            const txnRes = await manualDeliveryApi.createPaymentOrder(delivery._id);
+            const txnData = txnRes?.data;
+
+            if (!txnRes?.success || !txnData) {
+                throw new Error(txnRes?.message || "Failed to initialize payment transaction.");
+            }
+
+            // Handle DEV demo mode if enabled
+            if (txnData.demo) {
+                const verifyRes = await manualDeliveryApi.verifyPayment({
+                    transactionId: txnData.transactionId,
+                    razorpay_order_id: txnData.orderId,
+                    razorpay_payment_id: `DEMO-PAY-${Date.now()}`,
+                    razorpay_signature: "demo",
+                });
+
+                if (verifyRes?.success) {
+                    Alert.alert("Success", "Payment verified & manual delivery confirmed!");
+                    fetchDetails(true);
+                } else {
+                    Alert.alert("Error", verifyRes?.message || "Payment verification failed.");
+                }
+                return;
+            }
+
+            // 2. Open Razorpay Checkout modal
+            const { user: sessionUser } = await getUserData();
+            const fullName =
+                sessionUser?.name ||
+                [sessionUser?.firstName, sessionUser?.lastName].filter(Boolean).join(" ") ||
+                delivery.pickup?.storeName ||
+                "Seller";
+
+            const options: any = {
+                description: `Delivery charges for #${delivery.deliveryNumber || "Manual Order"}`,
+                currency: txnData.currency || "INR",
+                key: txnData.key,
+                amount: txnData.amount,
+                order_id: txnData.orderId,
+                name: "Oonloop",
+                prefill: {
+                    email: sessionUser?.email || "seller@oonloop.com",
+                    contact: sessionUser?.mobileNumber || sessionUser?.phone || sessionUser?.mobile || "",
+                    name: fullName,
+                },
+                theme: { color: colors.primary || "#0F8A5F" },
+            };
+
+            let paymentResponse: any;
+            try {
+                paymentResponse = await RazorpayCheckout.open(options);
+            } catch (razorpayError: any) {
+                console.log("Razorpay payment cancelled or failed:", razorpayError);
+                Alert.alert(
+                    "Payment Incomplete",
+                    "Payment was cancelled or failed. You can retry at any time."
+                );
+                return;
+            }
+
+            // 3. Verify Payment with backend
+            try {
+                const verifyRes = await manualDeliveryApi.verifyPaymentWithRetry({
+                    transactionId: txnData.transactionId,
+                    razorpay_order_id: paymentResponse.razorpay_order_id,
+                    razorpay_payment_id: paymentResponse.razorpay_payment_id,
+                    razorpay_signature: paymentResponse.razorpay_signature,
+                });
+
+                if (verifyRes?.success) {
+                    Alert.alert(
+                        "Payment Successful",
+                        "Your manual delivery order has been broadcasted to nearby drivers."
+                    );
+                    fetchDetails(true);
+                } else {
+                    Alert.alert(
+                        "Verification Pending",
+                        "Payment received. If order confirmation takes a moment, please refresh."
+                    );
+                    fetchDetails(true);
+                }
+            } catch (verifyError: any) {
+                console.error("Verification retry failed:", verifyError);
+                Alert.alert(
+                    "Verification In Progress",
+                    "Payment was completed via Razorpay. We are confirming the transaction."
+                );
+                fetchDetails(true);
+            }
+        } catch (err: any) {
+            Alert.alert(
+                "Error",
+                err?.response?.data?.message || err?.message || "Failed to initiate payment."
+            );
+        } finally {
+            setPaying(false);
+        }
+    };
+
+const handleCall = (phone?: string) => {
         if (phone) Linking.openURL(`tel:${phone}`);
     };
 
@@ -376,6 +487,103 @@ export const ManualDeliveryDetailsScreen = ({ route, navigation }: any) => {
                         </View>
                     ) : null}
                 </View>
+
+                {/* ── CARD: PRICE & PAYMENT BREAKDOWN ── */}
+                {delivery.pricing && (
+                    <View style={styles.card}>
+                        <View style={styles.cardTitleRowBetween}>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                <Ionicons name="receipt" size={16} color="#059669" />
+                                <Text style={styles.cardTitle}>Price Summary</Text>
+                            </View>
+                            <View
+                                style={[
+                                    styles.paymentStatusBadge,
+                                    delivery.paymentStatus === "PAID" || delivery.status !== "CREATED"
+                                        ? styles.paymentStatusPaid
+                                        : styles.paymentStatusPending,
+                                ]}
+                            >
+                                <Ionicons
+                                    name={
+                                        delivery.paymentStatus === "PAID" || delivery.status !== "CREATED"
+                                            ? "checkmark-circle"
+                                            : "time-outline"
+                                    }
+                                    size={12}
+                                    color={
+                                        delivery.paymentStatus === "PAID" || delivery.status !== "CREATED"
+                                            ? "#059669"
+                                            : "#D97706"
+                                    }
+                                />
+                                <Text
+                                    style={[
+                                        styles.paymentStatusText,
+                                        delivery.paymentStatus === "PAID" || delivery.status !== "CREATED"
+                                            ? styles.paymentStatusTextPaid
+                                            : styles.paymentStatusTextPending,
+                                    ]}
+                                >
+                                    {delivery.paymentStatus === "PAID" || delivery.status !== "CREATED"
+                                        ? "PAID"
+                                        : "PAYMENT PENDING"}
+                                </Text>
+                            </View>
+                        </View>
+
+                        <View style={styles.billContainer}>
+                            <View style={styles.billRow}>
+                                <Text style={styles.billLabel}>
+                                    Delivery Charges ({delivery.pricing.distanceKm ? `${delivery.pricing.distanceKm} km` : "Standard"})
+                                </Text>
+                                <Text style={styles.billValue}>
+                                    ₹{delivery.pricing.deliveryFee.toFixed(2)}
+                                </Text>
+                            </View>
+                            <View style={styles.billRow}>
+                                <Text style={styles.billLabel}>Platform Charges</Text>
+                                <Text style={styles.billValue}>
+                                    ₹{delivery.pricing.platformFee.toFixed(2)}
+                                </Text>
+                            </View>
+                            <View style={styles.billRow}>
+                                <Text style={styles.billLabel}>GST (18%)</Text>
+                                <Text style={styles.billValue}>
+                                    ₹{delivery.pricing.gstAmount.toFixed(2)}
+                                </Text>
+                            </View>
+                            <View style={styles.billDivider} />
+                            <View style={[styles.billRow, styles.totalRow]}>
+                                <Text style={styles.totalLabel}>Total Payable</Text>
+                                <Text style={styles.totalValue}>
+                                    ₹{delivery.pricing.totalAmount.toFixed(2)}
+                                </Text>
+                            </View>
+
+                            {/* Pay Now Button if payment is pending */}
+                            {isCreated && delivery.paymentStatus !== "PAID" && (
+                                <TouchableOpacity
+                                    style={[styles.retryPayBtn, paying && styles.retryPayBtnDisabled]}
+                                    onPress={handleRetryPayment}
+                                    disabled={paying}
+                                    activeOpacity={0.8}
+                                >
+                                    {paying ? (
+                                        <ActivityIndicator size="small" color="#fff" />
+                                    ) : (
+                                        <>
+                                            <Ionicons name="card" size={16} color="#fff" />
+                                            <Text style={styles.retryPayBtnText}>
+                                                Pay ₹{delivery.pricing.totalAmount.toFixed(2)} with Razorpay
+                                            </Text>
+                                        </>
+                                    )}
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    </View>
+                )}
 
                 {/* ── CARD 4: DRIVER DETAILS ── */}
                 {MANUAL_DELIVERY_FEATURES.ENABLE_DRIVER_MODULE && (
@@ -949,6 +1157,100 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: "700",
         color: "#DC2626",
+    },
+
+    cardTitleRowBetween: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: 12,
+    },
+    paymentStatusBadge: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 6,
+        borderWidth: 1,
+    },
+    paymentStatusPaid: {
+        backgroundColor: "#ECFDF5",
+        borderColor: "#A7F3D0",
+    },
+    paymentStatusPending: {
+        backgroundColor: "#FEF3C7",
+        borderColor: "#FDE68A",
+    },
+    paymentStatusText: {
+        fontSize: 11,
+        fontWeight: "700",
+    },
+    paymentStatusTextPaid: {
+        color: "#059669",
+    },
+    paymentStatusTextPending: {
+        color: "#D97706",
+    },
+    billContainer: {
+        backgroundColor: "#F8FAFC",
+        borderRadius: 12,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: "#E2E8F0",
+    },
+    billRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingVertical: 5,
+    },
+    billLabel: {
+        fontSize: 13,
+        color: "#475569",
+        fontWeight: "500",
+    },
+    billValue: {
+        fontSize: 13,
+        color: "#1E293B",
+        fontWeight: "600",
+    },
+    billDivider: {
+        height: 1,
+        backgroundColor: "#E2E8F0",
+        marginVertical: 8,
+    },
+    totalRow: {
+        paddingTop: 3,
+        paddingBottom: 2,
+    },
+    totalLabel: {
+        fontSize: 14,
+        fontWeight: "800",
+        color: "#0F172A",
+    },
+    totalValue: {
+        fontSize: 16,
+        fontWeight: "800",
+        color: "#059669",
+    },
+    retryPayBtn: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: colors.primary,
+        borderRadius: 10,
+        paddingVertical: 11,
+        gap: 8,
+        marginTop: 12,
+    },
+    retryPayBtnDisabled: {
+        backgroundColor: "#93C5FD",
+    },
+    retryPayBtnText: {
+        fontSize: 13,
+        fontWeight: "700",
+        color: "#FFFFFF",
     },
 });
 

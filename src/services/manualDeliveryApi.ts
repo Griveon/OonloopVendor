@@ -14,6 +14,9 @@ import type {
     DriverStatusUpdatePayload,
     DriverProfileItem,
     ManualDeliveryListMeta,
+    CreateManualDeliveryPaymentResponse,
+    VerifyManualDeliveryPaymentPayload,
+    VerifyManualDeliveryPaymentResponse,
 } from "../types/manualDelivery.types";
 
 export interface PaginatedResponse<T> {
@@ -80,6 +83,74 @@ export const manualDeliveryApi = {
         payload: CreateManualDeliveryPayload
     ): Promise<SingleResponse<ManualDelivery>> => {
         return (await postRequest(API_ENDPOINTS.MANUAL_DELIVERY_CREATE, payload)) as any;
+    },
+
+    /**
+     * Create Razorpay payment transaction order for manual delivery
+     */
+    createPaymentOrder: async (
+        manualDeliveryId: string
+    ): Promise<SingleResponse<CreateManualDeliveryPaymentResponse>> => {
+        return (await postRequest(
+            API_ENDPOINTS.PAYMENT_TRANSACTION_CREATE_MANUAL_DELIVERY,
+            { manualDeliveryId }
+        )) as any;
+    },
+
+    /**
+     * Verify Razorpay payment signature for manual delivery
+     */
+    verifyPayment: async (
+        payload: VerifyManualDeliveryPaymentPayload
+    ): Promise<SingleResponse<VerifyManualDeliveryPaymentResponse>> => {
+        return (await postRequest(
+            API_ENDPOINTS.PAYMENT_TRANSACTION_VERIFY_MANUAL_DELIVERY,
+            payload
+        )) as any;
+    },
+
+    /**
+     * Verify payment with automatic exponential retry to prevent double charges on temporary network hiccups
+     */
+    verifyPaymentWithRetry: async (
+        payload: VerifyManualDeliveryPaymentPayload
+    ): Promise<SingleResponse<VerifyManualDeliveryPaymentResponse>> => {
+        const delays = [0, 1200, 2500, 5000];
+        let lastResponse: any = null;
+        let lastError: any = null;
+
+        for (let attempt = 0; attempt < delays.length; attempt += 1) {
+            if (delays[attempt] > 0) {
+                await new Promise<void>((resolve) =>
+                    setTimeout(() => resolve(), delays[attempt])
+                );
+            }
+
+            try {
+                const response = (await postRequest(
+                    API_ENDPOINTS.PAYMENT_TRANSACTION_VERIFY_MANUAL_DELIVERY,
+                    payload
+                )) as any;
+
+                lastResponse = response;
+
+                if (response?.success) {
+                    return response;
+                }
+            } catch (error: any) {
+                lastError = error;
+                console.log(
+                    `Manual delivery payment verification attempt ${attempt + 1} failed:`,
+                    error?.message || error
+                );
+            }
+        }
+
+        if (lastResponse) {
+            return lastResponse;
+        }
+
+        throw lastError || new Error("Unable to verify manual delivery payment");
     },
 
     /**
