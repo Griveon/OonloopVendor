@@ -42,6 +42,12 @@ const formatDate = (dateString?: string) => {
     }
 };
 
+const isOrderPaid = (delivery?: ManualDelivery | null): boolean => {
+    if (!delivery) return false;
+    const status = String(delivery.paymentStatus || "").trim().toLowerCase();
+    return status === "paid" || Boolean(delivery.paidAt) || !["CREATED"].includes(delivery.status);
+};
+
 export const ManualDeliveryDetailsScreen = ({ route, navigation }: any) => {
     const deliveryId = route?.params?.id;
 
@@ -247,6 +253,7 @@ const handleCall = (phone?: string) => {
     }
 
     const isCreated = delivery.status === "CREATED";
+    const isPaid = isOrderPaid(delivery);
     const isTerminal = ["DELIVERED", "CANCELLED", "FAILED"].includes(delivery.status);
 
     const formattedDropoff =
@@ -499,20 +506,20 @@ const handleCall = (phone?: string) => {
                             <View
                                 style={[
                                     styles.paymentStatusBadge,
-                                    delivery.paymentStatus === "PAID" || delivery.status !== "CREATED"
+                                    isPaid
                                         ? styles.paymentStatusPaid
                                         : styles.paymentStatusPending,
                                 ]}
                             >
                                 <Ionicons
                                     name={
-                                        delivery.paymentStatus === "PAID" || delivery.status !== "CREATED"
+                                        isPaid
                                             ? "checkmark-circle"
                                             : "time-outline"
                                     }
                                     size={12}
                                     color={
-                                        delivery.paymentStatus === "PAID" || delivery.status !== "CREATED"
+                                        isPaid
                                             ? "#059669"
                                             : "#D97706"
                                     }
@@ -520,12 +527,12 @@ const handleCall = (phone?: string) => {
                                 <Text
                                     style={[
                                         styles.paymentStatusText,
-                                        delivery.paymentStatus === "PAID" || delivery.status !== "CREATED"
+                                        isPaid
                                             ? styles.paymentStatusTextPaid
                                             : styles.paymentStatusTextPending,
                                     ]}
                                 >
-                                    {delivery.paymentStatus === "PAID" || delivery.status !== "CREATED"
+                                    {isPaid
                                         ? "PAID"
                                         : "PAYMENT PENDING"}
                                 </Text>
@@ -562,7 +569,7 @@ const handleCall = (phone?: string) => {
                             </View>
 
                             {/* Pay Now Button if payment is pending */}
-                            {isCreated && delivery.paymentStatus !== "PAID" && (
+                            {isCreated && !isPaid && (
                                 <TouchableOpacity
                                     style={[styles.retryPayBtn, paying && styles.retryPayBtnDisabled]}
                                     onPress={handleRetryPayment}

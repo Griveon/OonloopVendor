@@ -117,10 +117,14 @@ export const ManualDeliveryEditScreen = ({ route, navigation }: any) => {
 
     // Recalculate distance when coordinates change
     const triggerDistanceCalculation = useCallback(
-        (lat: number | null, lng: number | null) => {
+        (lat: number | null, lng: number | null, link?: string | null) => {
             if (distanceDebounce.current) clearTimeout(distanceDebounce.current);
 
-            if (lat === null || lng === null) {
+            const effectiveLink = (typeof link === "string" ? link : mapLink)?.trim() || "";
+            const hasCoords = typeof lat === "number" && typeof lng === "number";
+            const hasLink = effectiveLink.length > 5;
+
+            if (!hasCoords && !hasLink) {
                 setDistanceResult(null);
                 return;
             }
@@ -129,11 +133,19 @@ export const ManualDeliveryEditScreen = ({ route, navigation }: any) => {
                 try {
                     setCalculatingDistance(true);
                     const res = await manualDeliveryApi.calculateDistance({
-                        dropoff: { latitude: lat, longitude: lng },
+                        dropoff: {
+                            latitude: hasCoords ? (lat as number) : undefined,
+                            longitude: hasCoords ? (lng as number) : undefined,
+                            mapLink: hasLink ? effectiveLink : undefined,
+                        },
                     });
 
                     if (res.success && res.data) {
                         setDistanceResult(res.data);
+                        if (res.data.dropoffCoordinates) {
+                            setLatitude(res.data.dropoffCoordinates.latitude);
+                            setLongitude(res.data.dropoffCoordinates.longitude);
+                        }
                     }
                 } catch (error) {
                     console.log("Distance calculation error:", error);
@@ -142,7 +154,7 @@ export const ManualDeliveryEditScreen = ({ route, navigation }: any) => {
                 }
             }, 500);
         },
-        []
+        [mapLink]
     );
 
     const handleMapLocationSelected = (addr: AddressResult) => {
@@ -193,7 +205,13 @@ export const ManualDeliveryEditScreen = ({ route, navigation }: any) => {
         if (coords) {
             setLatitude(coords.latitude);
             setLongitude(coords.longitude);
-            triggerDistanceCalculation(coords.latitude, coords.longitude);
+            triggerDistanceCalculation(coords.latitude, coords.longitude, url);
+        } else if (url.trim().length > 5) {
+            triggerDistanceCalculation(null, null, url);
+        } else {
+            setLatitude(null);
+            setLongitude(null);
+            setDistanceResult(null);
         }
     };
 

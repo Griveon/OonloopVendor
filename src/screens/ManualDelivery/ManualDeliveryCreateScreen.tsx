@@ -106,10 +106,14 @@ export const ManualDeliveryCreateScreen = ({ route, navigation }: any) => {
 
     // ─── Debounced distance calculation when dropoff coordinates change ──────────
     const triggerDistanceCalculation = useCallback(
-        (lat: number | null, lng: number | null) => {
+        (lat: number | null, lng: number | null, link?: string | null) => {
             if (distanceDebounce.current) clearTimeout(distanceDebounce.current);
 
-            if (lat === null || lng === null) {
+            const effectiveLink = (typeof link === "string" ? link : mapLink)?.trim() || "";
+            const hasCoords = typeof lat === "number" && typeof lng === "number";
+            const hasLink = effectiveLink.length > 5;
+
+            if (!hasCoords && !hasLink) {
                 setDistanceResult(null);
                 setPricing(null);
                 return;
@@ -119,26 +123,35 @@ export const ManualDeliveryCreateScreen = ({ route, navigation }: any) => {
                 try {
                     setCalculatingDistance(true);
                     const res = await manualDeliveryApi.calculateDistance({
-                        dropoff: { latitude: lat, longitude: lng },
+                        dropoff: {
+                            latitude: hasCoords ? (lat as number) : undefined,
+                            longitude: hasCoords ? (lng as number) : undefined,
+                            mapLink: hasLink ? effectiveLink : undefined,
+                        },
                     });
 
                     if (res.success && res.data) {
                         setDistanceResult(res.data);
                         setPricing(res.data.pricing || null);
+
+                        if (res.data.dropoffCoordinates) {
+                            setLatitude(res.data.dropoffCoordinates.latitude);
+                            setLongitude(res.data.dropoffCoordinates.longitude);
+                        }
                     } else {
                         setDistanceResult(null);
-                setPricing(null);
+                        setPricing(null);
                     }
                 } catch (error) {
                     console.log("Distance calculation error:", error);
                     setDistanceResult(null);
-                setPricing(null);
+                    setPricing(null);
                 } finally {
                     setCalculatingDistance(false);
                 }
             }, 500);
         },
-        []
+        [mapLink]
     );
 
     // ─── Extract Coordinates from Google Maps URLs ──────────────────────────────
@@ -180,7 +193,16 @@ export const ManualDeliveryCreateScreen = ({ route, navigation }: any) => {
         if (coords) {
             setLatitude(coords.latitude);
             setLongitude(coords.longitude);
-            triggerDistanceCalculation(coords.latitude, coords.longitude);
+            triggerDistanceCalculation(coords.latitude, coords.longitude, url);
+        } else if (url.trim().length > 5) {
+            // Google Maps short links (e.g. https://maps.app.goo.gl/UaZigapKxap7dZHe9)
+            // Backend will resolve the link and calculate distance & pricing
+            triggerDistanceCalculation(null, null, url);
+        } else {
+            setLatitude(null);
+            setLongitude(null);
+            setDistanceResult(null);
+            setPricing(null);
         }
     };
 
@@ -251,7 +273,8 @@ export const ManualDeliveryCreateScreen = ({ route, navigation }: any) => {
         const nameValid = customerName.trim().length >= 2;
         const mobileValid = /^[0-9]{10,15}$/.test(mobileNumber.trim());
         const addressValid = addressLine1.trim().length >= 2 || mapLink.trim().length > 5;
-        return nameValid && mobileValid && addressValid && !submitting;
+        const locationValid = Boolean(pricing || (latitude !== null && longitude !== null) || mapLink.trim().length > 5);
+        return nameValid && mobileValid && addressValid && locationValid && !submitting;
     };
 
     // ─── Create Delivery Action ──────────────────────────────────────────────────
@@ -280,7 +303,10 @@ export const ManualDeliveryCreateScreen = ({ route, navigation }: any) => {
             return;
         }
 
-        if (!pricing || latitude === null || longitude === null) {
+        const hasCoords = typeof latitude === "number" && typeof longitude === "number";
+        const hasLink = Boolean(mapLink && mapLink.trim().length > 5);
+
+        if (!pricing || (!hasCoords && !hasLink)) {
             Alert.alert(
                 "Location Required",
                 "Please select the customer's delivery location on the map or paste a valid Google Maps link so distance and delivery fee can be calculated."

@@ -78,6 +78,7 @@ interface CatalogProduct {
     images: ProductImage[];
     variants: ProductVariant[];
     brand?: Brand;
+    searchKeywords?: string[];
     isMainCatalogProduct: boolean;
     productCategory: string;
     category: string | { _id?: string;[key: string]: any };
@@ -699,6 +700,7 @@ const SearchAddMode: React.FC = () => {
                 category: categoryId,
                 name: product.name,
                 description: product.description,
+                searchKeywords: Array.isArray(product.searchKeywords) ? product.searchKeywords : [],
                 slug: `${product.slug}-${Date.now()}`,
 
                 stock: calculatedPricings.reduce(

@@ -163,12 +163,13 @@ export interface UpdateManualDeliveryPayload {
 
 export interface CalculateDistancePayload {
     pickup?: {
-        latitude: number;
-        longitude: number;
+        latitude?: number | null;
+        longitude?: number | null;
     };
     dropoff: {
-        latitude: number;
-        longitude: number;
+        latitude?: number | null;
+        longitude?: number | null;
+        mapLink?: string | null;
     };
 }
 
@@ -180,6 +181,7 @@ export interface CalculateDistanceResult {
     calculationMethod?: DistanceCalculationMethod | null;
     provider?: string | null;
     calculatedAt?: string | null;
+    dropoffCoordinates?: { latitude: number; longitude: number } | null;
     pricing?: ManualDeliveryPricing | null;
 }
 

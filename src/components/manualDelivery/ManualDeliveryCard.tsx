@@ -161,7 +161,7 @@ export const ManualDeliveryCard: React.FC<Props> = ({
                         <Text style={styles.priceText}>
                             Total: ₹{delivery.pricing.totalAmount.toFixed(2)}
                         </Text>
-                        {delivery.paymentStatus === "PAID" && (
+                        {(String(delivery.paymentStatus || "").toLowerCase() === "paid" || Boolean(delivery.paidAt)) && (
                             <View style={styles.paidPill}>
                                 <Text style={styles.paidPillText}>PAID</Text>
                             </View>

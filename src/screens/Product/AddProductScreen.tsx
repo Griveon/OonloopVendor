@@ -29,6 +29,7 @@ import {
 import { colors } from "../../constants/AppThem";
 import AppBar from "../../components/utils/AppBar";
 import FloatingInput from "../../components/inputs/FloatingInput";
+import SearchKeywordsInput from "../../components/inputs/SearchKeywordsInput";
 import { getUserData } from "../../components/AsyncStorage/AsyncStorage";
 import { getRequest, postRequest, uploadRequest } from "../../constants/ApiClient";
 import { API_ENDPOINTS } from "../../constants/ApiEndpoints";
@@ -91,6 +92,7 @@ type ProductAvailability = {
 type ProductForm = {
     name: string;
     description: string;
+    searchKeywords: string[];
     slug: string;
     stock: string;
     minQty: string;
@@ -1884,6 +1886,7 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
     const [form, setForm] = useState<ProductForm>({
         name: "",
         description: "",
+        searchKeywords: [],
         slug: "",
         stock: "",
         minQty: "1",
@@ -2436,6 +2439,7 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                 category: form.categoryId,
                 name: form.name.trim(),
                 description: form.description.trim(),
+                searchKeywords: Array.isArray(form.searchKeywords) ? form.searchKeywords : [],
                 slug: form.slug,
                 stock: parseInt(form.stock || "0"),
                 isActive: form.isActive,
@@ -2727,6 +2731,11 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                     onChangeText={(t: string) => updateForm("description", t)}
                     multiline
                     numberOfLines={3}
+                />
+
+                <SearchKeywordsInput
+                    keywords={form.searchKeywords || []}
+                    onChangeKeywords={(keywords) => updateForm("searchKeywords", keywords)}
                 />
 
                 {/* <FloatingInput
