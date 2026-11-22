@@ -43,6 +43,8 @@ type UploadedImage = {
     uri: string;
     name: string;
     type: string;
+    isPrimary?: boolean;
+    position?: number;
 };
 
 type AdditionalHandlingSnapshot = {
@@ -1304,12 +1306,14 @@ const ImageUploadGrid = ({
     images,
     onAdd,
     onRemove,
+    onSetPrimary,
     label,
     max,
 }: {
     images: UploadedImage[];
     onAdd: () => void;
     onRemove: (i: number) => void;
+    onSetPrimary?: (i: number) => void;
     label: string;
     max?: number;
 }) => {
@@ -1320,23 +1324,41 @@ const ImageUploadGrid = ({
                 {label} ({images.length}{max ? `/${max}` : ""})
             </Text>
             <View style={imgGridStyles.grid}>
-                {images.map((img, i) => (
-                    <View key={i} style={imgGridStyles.item}>
-                        <Image source={{ uri: img.uri }} style={imgGridStyles.img} resizeMode="cover" />
-                        {i === 0 && (
-                            <View style={imgGridStyles.primaryBadge}>
-                                <Text style={imgGridStyles.primaryText}>Primary</Text>
-                            </View>
-                        )}
-                        <TouchableOpacity
-                            style={imgGridStyles.removeBtn}
-                            onPress={() => onRemove(i)}
-                            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                        >
-                            <Ionicons name="close-circle" size={20} color="#EF4444" />
-                        </TouchableOpacity>
-                    </View>
-                ))}
+                {images.map((img, i) => {
+                    const isCover = img.isPrimary !== undefined ? img.isPrimary : i === 0;
+                    return (
+                        <View key={i} style={imgGridStyles.item}>
+                            <TouchableOpacity
+                                activeOpacity={0.8}
+                                onPress={() => onSetPrimary?.(i)}
+                            >
+                                <Image source={{ uri: img.uri }} style={imgGridStyles.img} resizeMode="cover" />
+                            </TouchableOpacity>
+                            {isCover ? (
+                                <View style={imgGridStyles.primaryBadge}>
+                                    <Ionicons name="star" size={9} color="#fff" style={{ marginRight: 2 }} />
+                                    <Text style={imgGridStyles.primaryText}>Cover</Text>
+                                </View>
+                            ) : onSetPrimary ? (
+                                <TouchableOpacity
+                                    style={imgGridStyles.setPrimaryBtn}
+                                    onPress={() => onSetPrimary(i)}
+                                    activeOpacity={0.7}
+                                >
+                                    <Ionicons name="star-outline" size={8} color="#fff" />
+                                    <Text style={imgGridStyles.setPrimaryText}>Set Cover</Text>
+                                </TouchableOpacity>
+                            ) : null}
+                            <TouchableOpacity
+                                style={imgGridStyles.removeBtn}
+                                onPress={() => onRemove(i)}
+                                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                            >
+                                <Ionicons name="close-circle" size={20} color="#EF4444" />
+                            </TouchableOpacity>
+                        </View>
+                    );
+                })}
                 {canAdd && (
                     <TouchableOpacity style={imgGridStyles.addBtn} onPress={onAdd} activeOpacity={0.7}>
                         <Ionicons name="camera-outline" size={22} color={colors.primary} />
@@ -1439,6 +1461,19 @@ const imgGridStyles = StyleSheet.create({
         paddingVertical: 2,
     },
     primaryText: { fontSize: 9, color: "#fff", fontWeight: "700" },
+    setPrimaryBtn: {
+        position: "absolute",
+        bottom: 4,
+        left: 4,
+        backgroundColor: "rgba(0,0,0,0.6)",
+        borderRadius: 4,
+        paddingHorizontal: 4,
+        paddingVertical: 2,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 2,
+    },
+    setPrimaryText: { fontSize: 8, color: "#fff", fontWeight: "600" },
     removeBtn: { position: "absolute", top: -6, right: -6 },
     addBtn: {
         width: 80,
@@ -2318,13 +2353,31 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
 
     const applyProductImages = (res: ImagePickerResponse) => {
         if (res.didCancel || res.errorCode) return;
-        const newImgs: UploadedImage[] = (res.assets ?? []).map((a) => ({
-            uri: a.uri!,
-            name: a.fileName ?? `product_${Date.now()}.jpg`,
-            type: a.type ?? "image/jpeg",
-        }));
-        setProductImages((p) => [...p, ...newImgs]);
+        setProductImages((prev) => {
+            const hasExisting = prev.length > 0;
+            const newImgs: UploadedImage[] = (res.assets ?? []).map((a, idx) => ({
+                uri: a.uri!,
+                name: a.fileName ?? `product_${Date.now()}.jpg`,
+                type: a.type ?? "image/jpeg",
+                isPrimary: !hasExisting && idx === 0,
+                position: prev.length + idx,
+            }));
+            return [...prev, ...newImgs];
+        });
     };
+
+    const handleSetPrimaryProductImage = useCallback((index: number) => {
+        setProductImages((prev) => {
+            if (index < 0 || index >= prev.length) return prev;
+            const chosen = { ...prev[index], isPrimary: true, position: 0 };
+            const rest = prev.filter((_, i) => i !== index).map((img, idx) => ({
+                ...img,
+                isPrimary: false,
+                position: idx + 1,
+            }));
+            return [chosen, ...rest];
+        });
+    }, []);
 
     // ── Step validations ───────────────────────────────────────────────────────
     const isAvailabilityValid =
@@ -3178,12 +3231,13 @@ const VendorAddProductScreen = ({ navigation, route }: any) => {
                     onRemove={(i) =>
                         setProductImages((p) => p.filter((_, idx) => idx !== i))
                     }
+                    onSetPrimary={handleSetPrimaryProductImage}
                     label="Product Images"
                     max={5}
                 />
 
                 <Text style={step5Styles.hint}>
-                    Supported: JPG, PNG · Max 5 images
+                    Supported: JPG, PNG · Max 5 images · Click 'Set Cover' to choose the primary cover image
                 </Text>
 
                 {/* 🔥 VIDEO SECTION */}

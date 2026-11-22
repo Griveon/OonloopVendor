@@ -40,6 +40,8 @@ import { API_ENDPOINTS } from "../../constants/ApiEndpoints";
 import { getUserData } from "../../components/AsyncStorage/AsyncStorage";
 import AppBar from "../../components/utils/AppBar";
 import Pagination from "../../components/utils/Pagination";
+import { getProductCoverUrl } from "../../utils/productImage";
+import { IOptimizedImage } from "../../types/product";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -79,6 +81,8 @@ interface CatalogProduct {
     variants: ProductVariant[];
     brand?: Brand;
     searchKeywords?: string[];
+    coverImage?: IOptimizedImage | null;
+    detailImage?: IOptimizedImage | null;
     isMainCatalogProduct: boolean;
     productCategory: string;
     category: string | { _id?: string;[key: string]: any };
@@ -228,7 +232,7 @@ const ProductRow: React.FC<{
     added: boolean;
     onAdd: (item: CatalogProduct) => void;
 }> = ({ item, added, onAdd }) => {
-    const imageUri = getPrimaryImage(item.images);
+    const imageUri = getProductCoverUrl(item as any);
     const lowestPrice =
         item.variants.length > 0
             ? Math.min(...item.variants.map((v) => v.price))
@@ -418,7 +422,7 @@ const PricingModal: React.FC<{
     };
 
     const valid = allVariantsValid(variantPricings) && !submitting;
-    const imageUri = getPrimaryImage(product.images);
+    const imageUri = getProductCoverUrl(product as any);
 
     return (
         <Modal
@@ -719,16 +723,18 @@ const SearchAddMode: React.FC = () => {
 
                 isMainCatalogProduct: false,
                 catalogRef: product._id,
+                coverImage: product.coverImage ?? null,
+                detailImage: product.detailImage ?? null,
 
                 // ❌ MUST BE FINAL URLs ONLY (no uri, no file://)
                 images: product.images
                     .filter((img: any) => img.url)
-                    .map((img: any) => ({
+                    .map((img: any, idx: number) => ({
                         url: img.url,
                         name: img.name || "",
                         alt: img.alt || "",
-                        isPrimary: !!img.isPrimary,
-                        position: img.position ?? 0,
+                        isPrimary: img.isPrimary !== undefined ? !!img.isPrimary : idx === 0,
+                        position: img.position ?? idx,
                     })),
 
                 variants: product.variants.map((v, i) => {

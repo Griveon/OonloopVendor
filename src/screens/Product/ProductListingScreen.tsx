@@ -28,6 +28,8 @@ import { Fonts } from '../../constants/Fonts';
 import AppBar from '../../components/utils/AppBar';
 import { getUserData } from '../../components/AsyncStorage/AsyncStorage';
 import Pagination from '../../components/utils/Pagination';
+import { getProductCoverUrl, getProductDetailUrl } from '../../utils/productImage';
+import { IOptimizedImage } from '../../types/product';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -81,6 +83,8 @@ interface Product {
     slug: string;
     variants: ProductVariant[];
     images: ProductImage[];
+    coverImage?: IOptimizedImage | null;
+    detailImage?: IOptimizedImage | null;
     attributes?: { brand?: string; material?: string;[key: string]: any };
     mrp?: number;
     stock: number;
@@ -454,7 +458,7 @@ const ProductCard = ({
     onToggleStatus?: (product: Product) => void;
     onUpdateQty?: (product: Product) => void;
 }) => {
-    const imageUrl = getPrimaryImage(product.images);
+    const imageUrl = getProductCoverUrl(product);
     const { minPrice, maxPrice, minMrp, maxMrp } = getMinMaxPrice(product.variants);
     const priceLabel =
         minPrice === maxPrice
@@ -630,9 +634,11 @@ const THUMB_GAP = 6;
 const ImageGallery = ({
     images,
     badges,
+    heroUrl,
 }: {
     images: ProductImage[];
     badges?: React.ReactNode;
+    heroUrl?: string;
 }) => {
     const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -640,13 +646,18 @@ const ImageGallery = ({
         setSelectedIndex(0);
     }, [images]);
 
-    if (!images?.length) return null;
+    if (!images?.length && !heroUrl) return null;
+
+    const currentUrl =
+        selectedIndex === 0 && heroUrl
+            ? heroUrl
+            : images[selectedIndex]?.url || heroUrl || '';
 
     return (
         <View style={galleryStyles.container}>
             <View style={galleryStyles.imageWrapper}>
                 <Image
-                    source={{ uri: images[selectedIndex]?.url }}
+                    source={{ uri: currentUrl }}
                     style={galleryStyles.mainImage}
                 />
 
@@ -839,7 +850,11 @@ const ProductDetailsSheet = ({
                         </View>
 
                         {/* ── Gallery: fixed block, ABOVE ScrollView ── */}
-                        <ImageGallery images={galleryImages} badges={badges} />
+                        <ImageGallery
+                            images={galleryImages}
+                            badges={badges}
+                            heroUrl={!activeVariant?.images?.length ? getProductDetailUrl(product) : undefined}
+                        />
 
                         {/* ── Scrollable body ── */}
                         <ScrollView

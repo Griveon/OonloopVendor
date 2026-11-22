@@ -17,6 +17,8 @@ export interface OrderProductDetails {
     _id?: string;
     name?: string;
     images?: ProductImage[];
+    coverImage?: { url: string; [key: string]: any } | null;
+    detailImage?: { url: string; [key: string]: any } | null;
     variants?: ProductVariantDetails[];
 }
 
@@ -85,6 +87,8 @@ export const getOrderItemDetails = (item: OrderItem) => {
         ? `${qtyText} (${variantLabel})`
         : qtyText;
 
+    const productCover = product?.coverImage?.url;
+
     return {
         name,
         packSize,
@@ -94,7 +98,10 @@ export const getOrderItemDetails = (item: OrderItem) => {
         sku: variant?.sku,
         specification: variant?.productSpecification,
         images: [...new Set([
-            ...imageUrls(variant?.images), ...imageUrls(item.images), ...imageUrls(product?.images),
+            ...imageUrls(variant?.images),
+            ...(productCover ? [productCover] : []),
+            ...imageUrls(item.images),
+            ...imageUrls(product?.images),
         ])],
     };
 };
