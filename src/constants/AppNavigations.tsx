@@ -34,6 +34,7 @@ import ManualDeliveryDetailsScreen from "../screens/ManualDelivery/ManualDeliver
 import ManualDeliveryEditScreen from "../screens/ManualDelivery/ManualDeliveryEditScreen";
 import DriverManualDeliveryListScreen from "../screens/ManualDelivery/driver/DriverManualDeliveryListScreen";
 import DriverManualDeliveryDetailsScreen from "../screens/ManualDelivery/driver/DriverManualDeliveryDetailsScreen";
+import NotificationSettingsScreen from "../screens/Settings/NotificationSettingsScreen";
 // import DashboardScreen from "../screens/Dashboard/DashboardScreen"; // Uncomment when ready
 
 export type RootStackParamList = {
@@ -75,6 +76,7 @@ export type RootStackParamList = {
     ManualDeliveryEdit: { id: string };
     DriverManualDeliveryListing: undefined;
     DriverManualDeliveryDetails: { id: string };
+    NotificationSettings: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -131,6 +133,7 @@ const AppNavigator = forwardRef<NavigationContainerRef<RootStackParamList>>((pro
                 <Stack.Screen name="ManualDeliveryEdit" component={ManualDeliveryEditScreen} />
                 <Stack.Screen name="DriverManualDeliveryListing" component={DriverManualDeliveryListScreen} />
                 <Stack.Screen name="DriverManualDeliveryDetails" component={DriverManualDeliveryDetailsScreen} />
+                <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
             </Stack.Navigator>
         </NavigationContainer>
     );

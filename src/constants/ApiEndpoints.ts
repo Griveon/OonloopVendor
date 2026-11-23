@@ -60,6 +60,8 @@ export const API_ENDPOINTS = {
     FIREBASE_TOKEN_SAVE: "/firebasetokens/save",
     USERPREFERENCE_SET: "/userpreference/set",
     USERPREFERENCE_GET: "/userpreference/get",
+    USERPREFERENCE_SOUNDS: "/userpreference/sounds",
+    USERPREFERENCE_TEST_SOUND: "/userpreference/test-sound",
     CALCULATEPRODUCTHANDLING: "/product/calculatehandling",
     // Manual Delivery Endpoints
     MANUAL_DELIVERY_PICKUP_DEFAULT: "/manual-deliveries/pickup-default",

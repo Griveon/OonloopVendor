@@ -62,6 +62,13 @@ export const USER_PREFERENCES = {
         type: "boolean",
         default: true,
     },
+
+    VENDOR_ORDER_NOTIFICATION_SOUND: {
+        key: "vendorOrderNotificationSound",
+        type: "string",
+        default: "order_alert",
+        allowed: ["order_alert", "order_alert_sound_v2"],
+    },
     
     DRIVER_ORDER_NOTIFICATIONS: {
         key: "isDriverWantsOrderNotifications",

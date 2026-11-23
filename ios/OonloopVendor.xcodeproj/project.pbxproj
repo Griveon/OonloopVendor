@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1A100012CE0000100000001 /* order_alert.wav in Resources */ = {isa = PBXBuildFile; fileRef = A1A100012CE0000100000002 /* order_alert.wav */; };
+		A1A100022CE0000100000001 /* order_alert_sound_v2.mpeg in Resources */ = {isa = PBXBuildFile; fileRef = A1A100022CE0000100000002 /* order_alert_sound_v2.mpeg */; };
 		0C80B921A6F3F58F76C31292 /* libPods-OonloopVendor.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-OonloopVendor.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
@@ -140,6 +142,8 @@
 		C29FD75160534E878DE3CAF5 /* OonloopPrivacyPolicy1.pdf */ = {isa = PBXFileReference; name = "OonloopPrivacyPolicy1.pdf"; path = "../src/Assets/legal/OonloopPrivacyPolicy1.pdf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
 		5F04EB367EFC4E35A343C9CB /* OonloopTCFinal.docx */ = {isa = PBXFileReference; name = "OonloopTCFinal.docx"; path = "../src/Assets/legal/OonloopTCFinal.docx"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
 		B1D2A20AF7704A94A11BCEB1 /* OonloopTCFinal1.pdf */ = {isa = PBXFileReference; name = "OonloopTCFinal1.pdf"; path = "../src/Assets/legal/OonloopTCFinal1.pdf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
+		A1A100012CE0000100000002 /* order_alert.wav */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = audio.wav; name = "order_alert.wav"; path = "OonloopVendor/order_alert.wav"; sourceTree = "<group>"; };
+		A1A100022CE0000100000002 /* order_alert_sound_v2.mpeg */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = audio.mp3; name = "order_alert_sound_v2.mpeg"; path = "OonloopVendor/order_alert_sound_v2.mpeg"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -162,6 +166,8 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
+				A1A100012CE0000100000002 /* order_alert.wav */,
+				A1A100022CE0000100000002 /* order_alert_sound_v2.mpeg */,
 			);
 			name = OonloopVendor;
 			sourceTree = "<group>";
@@ -340,6 +346,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1A100012CE0000100000001 /* order_alert.wav in Resources */,
+				A1A100022CE0000100000001 /* order_alert_sound_v2.mpeg in Resources */,
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3348104ABF0047E7AFFEF7C9 /* Inter_18pt-Black.ttf in Resources */,

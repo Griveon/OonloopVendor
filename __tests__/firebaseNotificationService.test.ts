@@ -1,7 +1,15 @@
+import { Platform } from 'react-native';
 import {
     ORDER_NOTIFICATION_CHANNEL_ID,
+    ORDER_NOTIFICATION_CHANNEL_V1_ID,
+    ORDER_NOTIFICATION_CHANNEL_V2_ID,
+    ORDER_NOTIFICATION_SILENT_CHANNEL_ID,
     DEFAULT_NOTIFICATION_CHANNEL_ID,
     ORDER_NOTIFICATION_SOUND,
+    ORDER_NOTIFICATION_SOUND_V1,
+    ORDER_NOTIFICATION_SOUND_V2,
+    ORDER_APNS_SOUND_V1,
+    ORDER_APNS_SOUND_V2,
     DRIVER_NEW_PAID_ORDER_TYPE,
     VENDOR_NEW_ORDER_TYPE,
     PAYMENT_SUCCESS_EVENT,
@@ -10,6 +18,9 @@ import {
     isOrderNotification,
     getNotificationChannelId,
     getNotificationSound,
+    getNotificationApnsSound,
+    createNotificationChannels,
+    setupNotificationChannels,
     handleNotificationNavigation,
 } from '../src/FirebaseService/notifications/firebaseNotificationService';
 import { navigate } from '../src/components/utils/NavigationService';
@@ -99,6 +110,8 @@ describe('firebaseNotificationService - Driver & Vendor Alignment', () => {
         it('recognizes messages specifying order channel or sound directly', () => {
             expect(isOrderNotification({ data: { channelId: ORDER_NOTIFICATION_CHANNEL_ID } } as any)).toBe(true);
             expect(isOrderNotification({ data: { sound: ORDER_NOTIFICATION_SOUND } } as any)).toBe(true);
+            expect(isOrderNotification({ data: { channelId: ORDER_NOTIFICATION_CHANNEL_V2_ID } } as any)).toBe(true);
+            expect(isOrderNotification({ data: { sound: ORDER_NOTIFICATION_SOUND_V2 } } as any)).toBe(true);
         });
 
         it('returns false for unrelated general notifications', () => {
@@ -114,6 +127,12 @@ describe('firebaseNotificationService - Driver & Vendor Alignment', () => {
             expect(getNotificationSound(msg)).toBe('order_alert');
         });
 
+        it('returns ORDER_NOTIFICATION_SOUND_V2 when sound or channel specifies V2', () => {
+            expect(getNotificationSound({ data: { sound: ORDER_NOTIFICATION_SOUND_V2 } } as any)).toBe(ORDER_NOTIFICATION_SOUND_V2);
+            expect(getNotificationSound({ data: { channelId: ORDER_NOTIFICATION_CHANNEL_V2_ID } } as any)).toBe(ORDER_NOTIFICATION_SOUND_V2);
+            expect(getNotificationSound({ data: { sound: 'order_alert_sound_v2' } } as any)).toBe('order_alert_sound_v2');
+        });
+
         it('returns default sound for non-order notification', () => {
             const msg: any = { data: { type: 'GENERAL' } };
             expect(getNotificationSound(msg)).toBe('default');
@@ -125,6 +144,12 @@ describe('firebaseNotificationService - Driver & Vendor Alignment', () => {
             expect(getNotificationChannelId(msg)).toBe('new_paid_orders_v1');
         });
 
+        it('returns ORDER_NOTIFICATION_CHANNEL_V2_ID when sound or channelId specifies V2', () => {
+            expect(getNotificationChannelId({ data: { sound: ORDER_NOTIFICATION_SOUND_V2 } } as any)).toBe(ORDER_NOTIFICATION_CHANNEL_V2_ID);
+            expect(getNotificationChannelId({ data: { channelId: ORDER_NOTIFICATION_CHANNEL_V2_ID } } as any)).toBe(ORDER_NOTIFICATION_CHANNEL_V2_ID);
+            expect(getNotificationChannelId({ data: { channelId: 'new_paid_orders_v2' } } as any)).toBe('new_paid_orders_v2');
+        });
+
         it('returns DEFAULT_NOTIFICATION_CHANNEL_ID for non-order notifications', () => {
             const msg: any = { data: { type: 'ANNOUNCEMENT' } };
             expect(getNotificationChannelId(msg)).toBe(DEFAULT_NOTIFICATION_CHANNEL_ID);
@@ -133,6 +158,82 @@ describe('firebaseNotificationService - Driver & Vendor Alignment', () => {
         it('respects explicitly provided channelId if sent in data payload', () => {
             const msg: any = { data: { channelId: 'custom_promo_channel' } };
             expect(getNotificationChannelId(msg)).toBe('custom_promo_channel');
+        });
+    });
+
+    describe('iOS APNs Sound Resolution', () => {
+        it('returns ORDER_APNS_SOUND_V1 (order_alert.wav) for standard order notification', () => {
+            const msg: any = { data: { type: DRIVER_NEW_PAID_ORDER_TYPE } };
+            expect(getNotificationApnsSound(msg)).toBe(ORDER_APNS_SOUND_V1);
+            expect(getNotificationApnsSound(msg)).toBe('order_alert.wav');
+        });
+
+        it('returns ORDER_APNS_SOUND_V2 (order_alert_sound_v2.mpeg) for V2 order sound or channel', () => {
+            expect(getNotificationApnsSound({ data: { sound: ORDER_NOTIFICATION_SOUND_V2 } } as any)).toBe(ORDER_APNS_SOUND_V2);
+            expect(getNotificationApnsSound({ data: { channelId: ORDER_NOTIFICATION_CHANNEL_V2_ID } } as any)).toBe(ORDER_APNS_SOUND_V2);
+            expect(getNotificationApnsSound({ data: { sound: ORDER_NOTIFICATION_SOUND_V2 } } as any)).toBe('order_alert_sound_v2.mpeg');
+        });
+
+        it('returns default for non-order notification', () => {
+            const msg: any = { data: { type: 'GENERAL' } };
+            expect(getNotificationApnsSound(msg)).toBe('default');
+        });
+    });
+
+    describe('createNotificationChannels', () => {
+        const originalOS = Platform.OS;
+
+        beforeEach(() => {
+            Platform.OS = 'android';
+        });
+
+        afterEach(() => {
+            Platform.OS = originalOS;
+        });
+
+        it('registers default, v1, v2, and silent notification channels with Notifee on Android', async () => {
+            const notifee = require('@notifee/react-native');
+            await createNotificationChannels();
+
+            expect(notifee.createChannel).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    id: DEFAULT_NOTIFICATION_CHANNEL_ID,
+                    sound: 'default',
+                })
+            );
+
+            expect(notifee.createChannel).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    id: ORDER_NOTIFICATION_CHANNEL_V1_ID,
+                    name: 'Order Alerts (Classic)',
+                    sound: ORDER_NOTIFICATION_SOUND_V1,
+                })
+            );
+
+            expect(notifee.createChannel).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    id: ORDER_NOTIFICATION_CHANNEL_V2_ID,
+                    name: 'Order Alerts (V2)',
+                    sound: ORDER_NOTIFICATION_SOUND_V2,
+                })
+            );
+
+            expect(notifee.createChannel).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    id: ORDER_NOTIFICATION_SILENT_CHANNEL_ID,
+                })
+            );
+        });
+
+        it('exports setupNotificationChannels as an alias for createNotificationChannels', () => {
+            expect(setupNotificationChannels).toBe(createNotificationChannels);
+        });
+
+        it('skips channel creation on non-Android platforms', async () => {
+            Platform.OS = 'ios';
+            const notifee = require('@notifee/react-native');
+            await createNotificationChannels();
+            expect(notifee.createChannel).not.toHaveBeenCalled();
         });
     });
 

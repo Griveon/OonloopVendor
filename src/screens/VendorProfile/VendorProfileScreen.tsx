@@ -18,6 +18,7 @@ import {
     Image,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useNavigation, useIsFocused } from "@react-navigation/native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import Toast from "react-native-toast-message";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
@@ -643,28 +644,52 @@ const fetchStoreImagesApi = async () => {
 // ─── User Preferences Component ───────────────────────────────────────────────
 
 const UserPreferencesCard = () => {
-    const prefKey = USER_PREFERENCES.VENDOR_ORDER_NOTIFICATIONS.key;
-    const defaultVal = USER_PREFERENCES.VENDOR_ORDER_NOTIFICATIONS.default;
+    const navigation = useNavigation<any>();
+    const isFocused = useIsFocused();
 
-    const [orderNotifications, setOrderNotifications] = useState<boolean>(defaultVal);
+    const notifPrefKey = USER_PREFERENCES.VENDOR_ORDER_NOTIFICATIONS.key;
+    const notifDefaultVal = USER_PREFERENCES.VENDOR_ORDER_NOTIFICATIONS.default;
+
+    const soundPrefKey = USER_PREFERENCES.VENDOR_ORDER_NOTIFICATION_SOUND.key;
+    const soundDefaultVal = USER_PREFERENCES.VENDOR_ORDER_NOTIFICATION_SOUND.default;
+
+    const [orderNotifications, setOrderNotifications] = useState<boolean>(notifDefaultVal);
+    const [notificationSound, setNotificationSound] = useState<string>(soundDefaultVal);
     const [loading, setLoading] = useState<boolean>(true);
     const [updating, setUpdating] = useState<boolean>(false);
 
     useEffect(() => {
-        loadPreferences();
-    }, []);
+        if (isFocused) {
+            loadPreferences();
+        }
+    }, [isFocused]);
+
+    const getSoundLabel = (soundKey: string) => {
+        if (soundKey === "order_alert_sound_v2") return "Order Alert (V2)";
+        if (soundKey === "order_alert") return "Order Alert (Classic)";
+        return soundKey || "Order Alert (Classic)";
+    };
 
     const loadPreferences = async () => {
         setLoading(true);
 
-        let valueFound = false;
+        let notifValueFound = false;
+        let soundValueFound = false;
 
         // 1. Check local storage first
         const localPrefs = await getLocalPreferences();
-        if (localPrefs && prefKey in localPrefs) {
-            setOrderNotifications(normalizeBooleanPreference(localPrefs[prefKey], defaultVal));
-            valueFound = true;
-            setLoading(false);
+        if (localPrefs) {
+            if (notifPrefKey in localPrefs) {
+                setOrderNotifications(normalizeBooleanPreference(localPrefs[notifPrefKey], notifDefaultVal));
+                notifValueFound = true;
+            }
+            if (soundPrefKey in localPrefs && typeof localPrefs[soundPrefKey] === "string") {
+                setNotificationSound(localPrefs[soundPrefKey]);
+                soundValueFound = true;
+            }
+            if (notifValueFound) {
+                setLoading(false);
+            }
         }
 
         // 2. Fetch from API to check remote state and keep local storage in sync
@@ -683,9 +708,13 @@ const UserPreferencesCard = () => {
                 await storeLocalPreferences(apiValues);
 
                 // If key exists in API response, set state (respects existing false/true)
-                if (prefKey in apiValues) {
-                    setOrderNotifications(normalizeBooleanPreference(apiValues[prefKey], defaultVal));
-                    valueFound = true;
+                if (notifPrefKey in apiValues) {
+                    setOrderNotifications(normalizeBooleanPreference(apiValues[notifPrefKey], notifDefaultVal));
+                    notifValueFound = true;
+                }
+                if (soundPrefKey in apiValues && typeof apiValues[soundPrefKey] === "string") {
+                    setNotificationSound(apiValues[soundPrefKey]);
+                    soundValueFound = true;
                 }
             }
         } catch (err: any) {
@@ -695,21 +724,24 @@ const UserPreferencesCard = () => {
         }
 
         // 3. IF KEY NEVER EXISTED (first time setup), initialize default value both locally and remotely
-        if (!valueFound) {
+        if (!notifValueFound) {
             await initializeDefaultPreference();
+        }
+        if (!soundValueFound) {
+            await setSingleLocalPreference(soundPrefKey, soundDefaultVal);
         }
     };
 
     const initializeDefaultPreference = async () => {
         try {
             // Save default value locally
-            await setSingleLocalPreference(prefKey, defaultVal);
-            setOrderNotifications(defaultVal);
+            await setSingleLocalPreference(notifPrefKey, notifDefaultVal);
+            setOrderNotifications(notifDefaultVal);
 
             // Sync default value with backend API
             await postRequest(API_ENDPOINTS.USERPREFERENCE_SET, {
-                key: prefKey,
-                value: defaultVal,
+                key: notifPrefKey,
+                value: notifDefaultVal,
             });
         } catch (err: any) {
             console.warn("Failed to set default preference on server:", err?.message);
@@ -721,13 +753,13 @@ const UserPreferencesCard = () => {
 
         // Optimistic UI update + Instant local storage persist
         setOrderNotifications(newValue);
-        await setSingleLocalPreference(prefKey, newValue);
+        await setSingleLocalPreference(notifPrefKey, newValue);
 
         setUpdating(true);
 
         try {
             const res: any = await postRequest(API_ENDPOINTS.USERPREFERENCE_SET, {
-                key: prefKey,
+                key: notifPrefKey,
                 value: newValue,
             });
 
@@ -740,7 +772,7 @@ const UserPreferencesCard = () => {
             } else {
                 // Rollback local storage & UI state on failure
                 setOrderNotifications(previousValue);
-                await setSingleLocalPreference(prefKey, previousValue);
+                await setSingleLocalPreference(notifPrefKey, previousValue);
 
                 Toast.show({
                     type: "error",
@@ -751,7 +783,7 @@ const UserPreferencesCard = () => {
         } catch (err: any) {
             // Rollback local storage & UI state on failure
             setOrderNotifications(previousValue);
-            await setSingleLocalPreference(prefKey, previousValue);
+            await setSingleLocalPreference(notifPrefKey, previousValue);
 
             Toast.show({
                 type: "error",
@@ -788,6 +820,24 @@ const UserPreferencesCard = () => {
                     />
                 )}
             </View>
+
+            <View style={prefStyles.divider} />
+
+            <TouchableOpacity
+                style={prefStyles.row}
+                onPress={() => navigation.navigate("NotificationSettings")}
+                activeOpacity={0.7}
+            >
+                <View style={prefStyles.textWrap}>
+                    <Text style={prefStyles.title}>Order Notification Sound</Text>
+                    <Text style={prefStyles.subtitle}>
+                        {getSoundLabel(notificationSound)}
+                    </Text>
+                </View>
+                <View style={prefStyles.soundActionRight}>
+                    <Ionicons name="chevron-forward-outline" size={20} color={colors.placeholder} />
+                </View>
+            </TouchableOpacity>
         </Section>
     );
 };
@@ -813,6 +863,15 @@ const prefStyles = StyleSheet.create({
         fontSize: 12,
         color: colors.placeholder,
         lineHeight: 16,
+    },
+    divider: {
+        height: 1,
+        backgroundColor: colors.formBorder || "#E5E7EB",
+        marginVertical: 2,
+    },
+    soundActionRight: {
+        flexDirection: "row",
+        alignItems: "center",
     },
 });
 

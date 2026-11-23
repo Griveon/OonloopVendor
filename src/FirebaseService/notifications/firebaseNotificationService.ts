@@ -37,11 +37,29 @@ export const DEFAULT_NOTIFICATION_CHANNEL_ID =
 export const ORDER_NOTIFICATION_CHANNEL_ID =
     'new_paid_orders_v1';
 
+export const ORDER_NOTIFICATION_CHANNEL_V1_ID =
+    'new_paid_orders_v1';
+
+export const ORDER_NOTIFICATION_CHANNEL_V2_ID =
+    'new_paid_orders_v2';
+
 export const ORDER_NOTIFICATION_SILENT_CHANNEL_ID =
     'new_paid_orders_silent_v1';
 
 export const ORDER_NOTIFICATION_SOUND =
     'order_alert';
+
+export const ORDER_NOTIFICATION_SOUND_V1 =
+    'order_alert';
+
+export const ORDER_NOTIFICATION_SOUND_V2 =
+    'order_alert_sound_v2';
+
+export const ORDER_APNS_SOUND_V1 =
+    'order_alert.wav';
+
+export const ORDER_APNS_SOUND_V2 =
+    'order_alert_sound_v2.mpeg';
 
 export const DRIVER_NEW_PAID_ORDER_TYPE =
     'DRIVER_NEW_PAID_ORDER';
@@ -209,7 +227,9 @@ export const isVendorOrderNotification = (
         Boolean(data?.vendorOrder_id) ||
         Boolean(data?.orderId) ||
         data?.channelId === ORDER_NOTIFICATION_CHANNEL_ID ||
-        data?.sound === ORDER_NOTIFICATION_SOUND
+        data?.channelId === ORDER_NOTIFICATION_CHANNEL_V2_ID ||
+        data?.sound === ORDER_NOTIFICATION_SOUND ||
+        data?.sound === ORDER_NOTIFICATION_SOUND_V2
     );
 };
 
@@ -471,13 +491,18 @@ export const getNotificationChannelId = (
         return channelId;
     }
 
+    const sound = String(remoteMessage?.data?.sound || '').trim();
+    if (sound === ORDER_NOTIFICATION_SOUND_V2) {
+        return ORDER_NOTIFICATION_CHANNEL_V2_ID;
+    }
+
     if (
         isOrderNotification(
             remoteMessage,
         )
     ) {
         return (
-            ORDER_NOTIFICATION_CHANNEL_ID
+            ORDER_NOTIFICATION_CHANNEL_V1_ID
         );
     }
 
@@ -485,12 +510,40 @@ export const getNotificationChannelId = (
         DEFAULT_NOTIFICATION_CHANNEL_ID
     );
 };
+
 export const getNotificationSound = (
     remoteMessage: FirebaseMessagingTypes.RemoteMessage,
 ): string => {
-    if (isOrderNotification(remoteMessage)) {
-        return ORDER_NOTIFICATION_SOUND; // 'order_alert'
+    const rawSound = String(remoteMessage?.data?.sound || '').trim();
+    const sound = rawSound.replace(/\.(wav|mpeg|mp3|aiff|caf|m4a)$/i, '');
+    if (sound) {
+        return sound;
     }
+
+    const channelId = String(remoteMessage?.data?.channelId || '').trim();
+    if (channelId === ORDER_NOTIFICATION_CHANNEL_V2_ID) {
+        return ORDER_NOTIFICATION_SOUND_V2;
+    }
+
+    if (isOrderNotification(remoteMessage)) {
+        return ORDER_NOTIFICATION_SOUND_V1;
+    }
+
+    return 'default';
+};
+
+export const getNotificationApnsSound = (
+    remoteMessage: FirebaseMessagingTypes.RemoteMessage,
+): string => {
+    const sound = getNotificationSound(remoteMessage);
+    if (sound === ORDER_NOTIFICATION_SOUND_V2) {
+        return ORDER_APNS_SOUND_V2;
+    }
+
+    if (sound === ORDER_NOTIFICATION_SOUND_V1 || isOrderNotification(remoteMessage)) {
+        return ORDER_APNS_SOUND_V1;
+    }
+
     return 'default';
 };
 /* =====================================================
@@ -599,6 +652,7 @@ export const requestNotificationPermission =
 
 export const createNotificationChannels =
     async (): Promise<void> => {
+        console.log("ORDER_NOTIFICATION_SOUND_V1", ORDER_NOTIFICATION_SOUND_V1);
         if (
             Platform.OS !== 'android'
         ) {
@@ -639,17 +693,18 @@ export const createNotificationChannels =
                             true,
                     });
 
-            const orderChannelId =
+            // Channel 1: Classic Order Alert
+            const orderChannelV1Id =
                 await notifee
                     .createChannel({
                         id:
-                            ORDER_NOTIFICATION_CHANNEL_ID,
+                            ORDER_NOTIFICATION_CHANNEL_V1_ID,
 
                         name:
-                            'New Paid Orders',
+                            'Order Alerts (Classic)',
 
                         description:
-                            'Immediate alerts for new paid delivery orders',
+                            'Classic sound alerts for new paid delivery orders',
 
                         importance:
                             AndroidImportance
@@ -660,7 +715,44 @@ export const createNotificationChannels =
                                 .PUBLIC,
 
                         sound:
-                            ORDER_NOTIFICATION_SOUND,
+                            ORDER_NOTIFICATION_SOUND_V1,
+
+                        vibration:
+                            true,
+
+                        vibrationPattern:
+                            ORDER_VIBRATION_PATTERN,
+
+                        lights:
+                            true,
+
+                        badge:
+                            true,
+                    });
+
+            // Channel 2: V2 Order Alert
+            const orderChannelV2Id =
+                await notifee
+                    .createChannel({
+                        id:
+                            ORDER_NOTIFICATION_CHANNEL_V2_ID,
+
+                        name:
+                            'Order Alerts (V2)',
+
+                        description:
+                            'V2 sound alerts for new paid delivery orders',
+
+                        importance:
+                            AndroidImportance
+                                .HIGH,
+
+                        visibility:
+                            AndroidVisibility
+                                .PUBLIC,
+
+                        sound:
+                            ORDER_NOTIFICATION_SOUND_V2,
 
                         vibration:
                             true,
@@ -709,7 +801,8 @@ export const createNotificationChannels =
                 '[NOTIFICATION] Channels created:',
                 {
                     defaultChannelId,
-                    orderChannelId,
+                    orderChannelV1Id,
+                    orderChannelV2Id,
                     silentOrderChannelId,
                 },
             );
@@ -720,6 +813,8 @@ export const createNotificationChannels =
             );
         }
     };
+
+export const setupNotificationChannels = createNotificationChannels;
 
 /* =====================================================
    FCM Token
@@ -986,8 +1081,7 @@ export const displayLocalNotification = async (
 
         const channelId = getNotificationChannelId(remoteMessage);
         const sound = getNotificationSound(remoteMessage);
-
-        const isOrder = isOrderNotification(remoteMessage);
+        const apnsSound = getNotificationApnsSound(remoteMessage);
 
         await notifee.displayNotification({
             id:
@@ -1005,9 +1099,7 @@ export const displayLocalNotification = async (
             },
 
             android: {
-                channelId: isOrder
-                    ? ORDER_NOTIFICATION_CHANNEL_ID
-                    : channelId,
+                channelId,
 
                 importance: AndroidImportance.HIGH,
                 visibility: AndroidVisibility.PUBLIC,
@@ -1027,9 +1119,14 @@ export const displayLocalNotification = async (
             },
 
             ios: {
-                sound: isOrder
-                    ? 'order_alert.mp3'
-                    : 'default',
+                sound: apnsSound,
+                foregroundPresentationOptions: {
+                    alert: true,
+                    badge: true,
+                    sound: true,
+                    banner: true,
+                    list: true,
+                },
             },
         });
     } catch (error) {
